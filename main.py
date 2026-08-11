@@ -33,7 +33,7 @@ def get_forex():
     url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/latest/USD"
     data = requests.get(url).json()
     rate = data["conversion_rates"]["PHP"]
-    return f"USD to PHP: {rate:.2f}"
+    return f"1 USD = PHP {rate:.2f}"
 
 def get_gold():
     url = "https://www.goldapi.io/api/XAU/PHP"
