@@ -31,10 +31,10 @@ def get_gold():
     return f"Gold: ₱{price_per_gram:,.2f}/gram (24k)"
 
 def get_font(size):
-    font_url = "https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Bold.ttf"
-    font_data = requests.get(font_url).content
-    return ImageFont.truetype(BytesIO(font_data), size)
-
+    try:
+        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
+    except:
+        return ImageFont.load_default()
 def generate_background():
     prompt = "misty mountain highland landscape, golden hour, minimalist, soft colors"
     url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height=1080"
