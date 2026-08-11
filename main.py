@@ -49,8 +49,7 @@ def get_font(size):
         return ImageFont.load_default()
 
 def generate_background():
-    scene = random.choice(BACKGROUND_PROMPTS)
-    prompt = f"{scene}, poster design with bold large white text at the top saying BENGUET DAILY UPDATE, professional typography, clean modern font"
+    prompt = random.choice(BACKGROUND_PROMPTS)
     url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height=1080"
     response = requests.get(url)
     img = Image.open(BytesIO(response.content)).convert("RGB")
@@ -67,6 +66,7 @@ def build_image():
     badge_font = get_font(30)
     text_font = get_font(24)
     small_font = get_font(20)
+    huge_title_font = get_font(140)
 
     ACCENT_BLUE = (86, 180, 233, 255)
     ACCENT_GREEN = (110, 210, 130, 255)
@@ -89,7 +89,14 @@ def build_image():
         draw.text((x + pad_x, text_y), text, font=badge_font, fill=(15, 15, 15, 255))
         return y + capsule_h
 
-    y = 250
+    title_text = "BENGUET DAILY UPDATE"
+    bbox = draw.textbbox((0, 0), title_text, font=huge_title_font)
+    title_w = bbox[2] - bbox[0]
+    title_x = (width - title_w) / 2
+    draw.rectangle([(0, 0), (width, 260)], fill=(0, 0, 0, 150))
+    draw.text((title_x, 40), title_text, font=huge_title_font, fill=WHITE)
+
+    y = 290
 
     y = section_badge(MARGIN, y, "WEATHER", ACCENT_BLUE)
     y += 24
