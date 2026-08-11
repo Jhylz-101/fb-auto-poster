@@ -47,32 +47,58 @@ def generate_background():
 
 def build_image():
     img = generate_background()
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 120))
+    overlay = Image.new("RGBA", img.size, (0, 0, 0, 100))
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
-    draw = ImageDraw.Draw(img)
-    title_font = get_font(50)
-    text_font = get_font(28)
+    draw = ImageDraw.Draw(img, "RGBA")
+    width, height = img.size
 
-    y = 40
-    draw.text((40, y), "Benguet Daily Update", font=title_font, fill="white")
-    y += 90
+    title_font = get_font(48)
+    header_font = get_font(30)
+    text_font = get_font(26)
+    small_font = get_font(20)
 
+    # Header bar
+    draw.rectangle([(0, 0), (width, 130)], fill=(0, 0, 0, 160))
+    draw.text((40, 40), "BENGUET DAILY UPDATE", font=title_font, fill="white")
+
+    # Card panel
+    card_top = 170
+    card_bottom = height - 90
+    draw.rounded_rectangle([(40, card_top), (width - 40, card_bottom)], radius=24, fill=(20, 20, 20, 150))
+
+    y = card_top + 30
+    x = 70
+
+    draw.text((x, y), "WEATHER", font=header_font, fill=(255, 210, 120, 255))
+    y += 50
     weather_lines = [get_weather(c) for c in CITIES[:5]]
     for line in weather_lines:
-        draw.text((40, y), line, font=text_font, fill="white")
-        y += 40
+        draw.text((x, y), line, font=text_font, fill="white")
+        y += 38
 
     y += 20
-    draw.text((40, y), get_forex(), font=text_font, fill="white")
-    y += 40
-    draw.text((40, y), get_gold(), font=text_font, fill="white")
+    draw.line([(x, y), (width - 70, y)], fill=(255, 255, 255, 60), width=1)
+    y += 20
+
+    draw.text((x, y), "CURRENCY", font=header_font, fill=(255, 210, 120, 255))
+    y += 50
+    draw.text((x, y), get_forex(), font=text_font, fill="white")
+    y += 45
+
+    draw.text((x, y), "GOLD", font=header_font, fill=(255, 210, 120, 255))
+    y += 50
+    draw.text((x, y), get_gold(), font=text_font, fill="white")
+
+    # Footer
+    from datetime import datetime
+    today = datetime.now().strftime("%B %d, %Y")
+    draw.text((40, height - 60), today, font=small_font, fill=(255, 255, 255, 180))
 
     buffer = BytesIO()
     img.save(buffer, format="JPEG")
     buffer.seek(0)
     return buffer
-
 def send_photo_for_approval(image_buffer):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     keyboard = {
