@@ -117,6 +117,8 @@ def listen_for_response(timeout_seconds=300):
 
 if __name__ == "__main__":
     image_buffer = build_image()
-    send_photo_for_approval(image_buffer)
+    time.sleep(2)
+    result = send_photo_for_approval(image_buffer)
+    print("SEND RESULT:", result)
     decision = listen_for_response()
     print(f"Final decision: {decision}")
