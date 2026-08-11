@@ -45,7 +45,8 @@ def get_gold():
 def get_font(size):
     try:
         return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
-    except:
+    except Exception as e:
+        print("FONT LOAD FAILED:", e)
         return ImageFont.load_default()
 
 def generate_background():
