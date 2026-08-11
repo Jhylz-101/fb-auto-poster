@@ -99,7 +99,7 @@ def build_image():
     y += 24
 
     weather_lines = [get_weather(c) for c in CITIES]
-    num_cols = 3
+    num_cols = 2
     col_width = (width - MARGIN * 2) // num_cols
     row_height = 36
     for i, line in enumerate(weather_lines):
