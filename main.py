@@ -45,13 +45,12 @@ def get_gold():
 def get_font(size):
     try:
         return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
-    except Exception as e:
-        print("FONT LOAD FAILED:", e)
+    except:
         return ImageFont.load_default()
 
 def generate_background():
     scene = random.choice(BACKGROUND_PROMPTS)
-    prompt = f"{scene}, poster design with bold large white text at the top saying 'BENGUET DAILY UPDATE', professional typography, clean modern font"
+    prompt = f"{scene}, poster design with bold large white text at the top saying BENGUET DAILY UPDATE, professional typography, clean modern font"
     url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height=1080"
     response = requests.get(url)
     img = Image.open(BytesIO(response.content)).convert("RGB")
@@ -59,13 +58,12 @@ def generate_background():
 
 def build_image():
     img = generate_background()
-    overlay = Image.new("RGBA", img.size, (10, 15, 30, 110))
+    overlay = Image.new("RGBA", img.size, (10, 15, 30, 90))
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
     draw = ImageDraw.Draw(img, "RGBA")
     width, height = img.size
 
-    title_font = get_font(78)
     badge_font = get_font(30)
     text_font = get_font(24)
     small_font = get_font(20)
@@ -76,13 +74,6 @@ def build_image():
     WHITE = (255, 255, 255, 255)
 
     MARGIN = 55
-
-    def centered_text(y, text, font, fill):
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_w = bbox[2] - bbox[0]
-        x = (width - text_w) / 2
-        draw.text((x, y), text, font=font, fill=fill)
-        return bbox[3] - bbox[1]
 
     def section_badge(x, y, text, color):
         bbox = draw.textbbox((0, 0), text, font=badge_font)
@@ -98,52 +89,7 @@ def build_image():
         draw.text((x + pad_x, text_y), text, font=badge_font, fill=(15, 15, 15, 255))
         return y + capsule_h
 
-    # Title rendered separately and force-scaled to guarantee size
-    title_text = "BENGUET"
-    subtitle_text = "DAILY UPDATE"
-
-    temp_font = get_font(100)
-    temp_img = Image.new("RGBA", (1000, 150), (0, 0, 0, 0))
-    temp_draw = ImageDraw.Draw(temp_img)
-    temp_draw.text((10, 10), title_text, font=temp_font, fill=WHITE)
-    bbox = temp_draw.textbbox((10, 10), title_text, font=temp_font)
-    cropped = temp_img.crop((bbox[0] - 5, bbox[1] - 5, bbox[2] + 5, bbox[3] + 5))
-
-    target_height = 110
-    scale = target_height / cropped.height
-    new_width = int(cropped.width * scale)
-    resized_title = cropped.resize((new_width, target_height), Image.LANCZOS)
-
-    draw.rectangle([(0, 0), (width, 220)], fill=(0, 0, 0, 130))
-
-    title_x = (width - new_width) // 2
-    img.paste(resized_title, (title_x, 30), resized_title)
-
-    sub_bbox = draw.textbbox((0, 0), subtitle_text, font=badge_font)
-    sub_w = sub_bbox[2] - sub_bbox[0]
-    sub_x = (width - sub_w) / 2
-    draw.text((sub_x, 150), subtitle_text, font=badge_font, fill=ACCENT_GOLD)
-
-    line_w = 220
-    draw.rectangle([((width - line_w) / 2, 195), ((width + line_w) / 2, 199)], fill=ACCENT_GOLD)
-    y = 235
-    # Dark banner behind title for contrast regardless of photo
-    draw.rectangle([(0, 0), (width, 210)], fill=(0, 0, 0, 130))
-
-    y = 35
-    draw.text((title_x, y), title_text, font=title_font_big, fill=WHITE)
-    y += 105
-    draw.text((sub_x, y), subtitle_text, font=badge_font, fill=ACCENT_GOLD)
-    y += 55
-
-    line_w = 220
-    draw.rectangle([((width - line_w) / 2, y), ((width + line_w) / 2, y + 4)], fill=ACCENT_GOLD)
-    y += 35
-
-    # Thin accent underline centered under title
-    line_w = 200
-    draw.rectangle([((width - line_w) / 2, y), ((width + line_w) / 2, y + 4)], fill=ACCENT_GOLD)
-    y += 40
+    y = 250
 
     y = section_badge(MARGIN, y, "WEATHER", ACCENT_BLUE)
     y += 24
