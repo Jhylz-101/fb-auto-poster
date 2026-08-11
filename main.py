@@ -2,6 +2,7 @@ import requests
 import time
 import json
 import random
+import os
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 from datetime import datetime
@@ -11,6 +12,8 @@ CHAT_ID = "7898015877"
 WEATHER_API_KEY = "84eaa833c8842565474aa84d53094962"
 EXCHANGE_API_KEY = "b174a7c95ab92ab9e9a39a75"
 GOLD_API_KEY = "goldapi-cc32e7d2de735906d4e7ac171ac3fb6e-io"
+FB_PAGE_TOKEN = os.environ.get("FB_PAGE_TOKEN")
+FB_PAGE_ID = os.environ.get("FB_PAGE_ID")
 
 CITIES = ["Baguio", "La Trinidad", "Atok", "Bakun", "Bokod", "Buguias", "Itogon", "Kabayan", "Kapangan", "Kibungan", "Mankayan", "Sablan", "Tuba", "Tublay"]
 
@@ -177,6 +180,17 @@ def listen_for_response(timeout_seconds=300):
 
     return "timeout"
 
+def post_to_facebook(image_buffer):
+    url = f"https://graph.facebook.com/{FB_PAGE_ID}/photos"
+    image_buffer.seek(0)
+    files = {"source": ("update.jpg", image_buffer, "image/jpeg")}
+    data = {
+        "caption": "Benguet Daily Update - Weather, Currency & Gold Prices",
+        "access_token": FB_PAGE_TOKEN
+    }
+    response = requests.post(url, files=files, data=data)
+    return response.json()
+
 if __name__ == "__main__":
     image_buffer = build_image()
     time.sleep(2)
@@ -184,3 +198,12 @@ if __name__ == "__main__":
     print("SEND RESULT:", result)
     decision = listen_for_response()
     print(f"Final decision: {decision}")
+
+    if decision == "approve":
+        image_buffer.seek(0)
+        fb_result = post_to_facebook(image_buffer)
+        print("FACEBOOK POST RESULT:", fb_result)
+        requests.post(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+            data={"chat_id": CHAT_ID, "text": "Posted to Facebook successfully!"}
+        )
