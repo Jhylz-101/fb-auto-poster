@@ -97,15 +97,31 @@ def build_image():
         draw.text((x + pad_x, text_y), text, font=badge_font, fill=(15, 15, 15, 255))
         return y + capsule_h
 
-    # Title with shadow for readability/impact
-    y = 55
-    title_text = "BENGUET DAILY UPDATE"
-    bbox = draw.textbbox((0, 0), title_text, font=title_font)
-    title_w = bbox[2] - bbox[0]
+    # Title - large, bold, with background bar for maximum visibility
+    title_font_big = get_font(90)
+    title_text = "BENGUET"
+    subtitle_text = "DAILY UPDATE"
+
+    title_bbox = draw.textbbox((0, 0), title_text, font=title_font_big)
+    title_w = title_bbox[2] - title_bbox[0]
     title_x = (width - title_w) / 2
-    draw.text((title_x + 3, y + 3), title_text, font=title_font, fill=(0, 0, 0, 160))
-    draw.text((title_x, y), title_text, font=title_font, fill=WHITE)
-    y += 130
+
+    sub_bbox = draw.textbbox((0, 0), subtitle_text, font=badge_font)
+    sub_w = sub_bbox[2] - sub_bbox[0]
+    sub_x = (width - sub_w) / 2
+
+    # Dark banner behind title for contrast regardless of photo
+    draw.rectangle([(0, 0), (width, 210)], fill=(0, 0, 0, 130))
+
+    y = 35
+    draw.text((title_x, y), title_text, font=title_font_big, fill=WHITE)
+    y += 105
+    draw.text((sub_x, y), subtitle_text, font=badge_font, fill=ACCENT_GOLD)
+    y += 55
+
+    line_w = 220
+    draw.rectangle([((width - line_w) / 2, y), ((width + line_w) / 2, y + 4)], fill=ACCENT_GOLD)
+    y += 35
 
     # Thin accent underline centered under title
     line_w = 200
