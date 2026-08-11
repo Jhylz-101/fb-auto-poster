@@ -33,14 +33,14 @@ def get_forex():
     url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/latest/USD"
     data = requests.get(url).json()
     rate = data["conversion_rates"]["PHP"]
-    return f"1 USD = PHP {rate:.2f}"
+    return f"USD to PHP: {rate:.2f}"
 
 def get_gold():
     url = "https://www.goldapi.io/api/XAU/PHP"
     headers = {"x-access-token": GOLD_API_KEY}
     data = requests.get(url, headers=headers).json()
     price_per_gram = data["price_gram_24k"]
-    return f"PHP {price_per_gram:,.2f}/gram (24k)"
+    return f"PHP {price_per_gram:,.2f}/gram (24k pure gold)"
 
 def get_font(size):
     return ImageFont.load_default(size=size)
@@ -63,6 +63,7 @@ def build_image():
     badge_font = get_font(30)
     text_font = get_font(19)
     small_font = get_font(20)
+    huge_title_font = get_font(55)
 
     ACCENT_BLUE = (86, 180, 233, 255)
     ACCENT_GREEN = (110, 210, 130, 255)
@@ -87,23 +88,13 @@ def build_image():
         return y + capsule_h
 
     title_text = "BENGUET DAILY UPDATE"
-    temp_font = get_font(100)
-    temp_img = Image.new("RGBA", (1400, 180), (0, 0, 0, 0))
-    temp_draw = ImageDraw.Draw(temp_img)
-    temp_draw.text((10, 10), title_text, font=temp_font, fill=WHITE)
-    bbox = temp_draw.textbbox((10, 10), title_text, font=temp_font)
-    cropped = temp_img.crop((bbox[0] - 5, bbox[1] - 5, bbox[2] + 5, bbox[3] + 5))
+    bbox = draw.textbbox((0, 0), title_text, font=huge_title_font)
+    title_w = bbox[2] - bbox[0]
+    title_x = (width - title_w) / 2
+    draw.rectangle([(0, 0), (width, 140)], fill=(0, 0, 0, 150))
+    draw.text((title_x, 40), title_text, font=huge_title_font, fill=WHITE)
 
-    target_height = 85
-    scale = target_height / cropped.height
-    new_width = int(cropped.width * scale)
-    resized_title = cropped.resize((new_width, target_height), Image.LANCZOS)
-
-    draw.rectangle([(0, 0), (width, 160)], fill=(0, 0, 0, 150))
-    title_x = (width - new_width) // 2
-    img.paste(resized_title, (title_x, 40), resized_title)
-
-    y = 190
+    y = 170
 
     y = section_badge(MARGIN, y, "WEATHER", ACCENT_BLUE)
     y += 24
@@ -133,10 +124,10 @@ def build_image():
     y += 24
     draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GOLD)
     draw.text((MARGIN + 18, y), get_gold(), font=text_font, fill=WHITE)
-    y += 100
+    y += 55
 
     today = datetime.now().strftime("%B %d, %Y")
-    draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 180))
+    draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 150))
     draw.text((MARGIN, height - 45), today, font=small_font, fill=WHITE)
 
     buffer = BytesIO()
