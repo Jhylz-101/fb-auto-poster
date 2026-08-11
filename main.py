@@ -57,35 +57,36 @@ def generate_background():
 
 def build_image():
     img = generate_background()
-    overlay = Image.new("RGBA", img.size, (10, 15, 30, 90))
+    overlay = Image.new("RGBA", img.size, (10, 15, 30, 110))
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
     draw = ImageDraw.Draw(img, "RGBA")
     width, height = img.size
 
-    title_font = get_font(56)
-    badge_font = get_font(24)
-    text_font = get_font(20)
-    small_font = get_font(18)
+    title_font = get_font(78)
+    badge_font = get_font(30)
+    text_font = get_font(24)
+    small_font = get_font(20)
 
     ACCENT_BLUE = (86, 180, 233, 255)
     ACCENT_GREEN = (110, 210, 130, 255)
     ACCENT_GOLD = (255, 195, 90, 255)
     WHITE = (255, 255, 255, 255)
 
-    MARGIN = 50
+    MARGIN = 55
 
     def centered_text(y, text, font, fill):
         bbox = draw.textbbox((0, 0), text, font=font)
         text_w = bbox[2] - bbox[0]
         x = (width - text_w) / 2
         draw.text((x, y), text, font=font, fill=fill)
+        return bbox[3] - bbox[1]
 
     def section_badge(x, y, text, color):
         bbox = draw.textbbox((0, 0), text, font=badge_font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
-        pad_x, pad_y = 20, 12
+        pad_x, pad_y = 24, 14
         capsule_h = text_h + pad_y * 2
         draw.rounded_rectangle(
             [(x, y), (x + text_w + pad_x * 2, y + capsule_h)],
@@ -95,43 +96,54 @@ def build_image():
         draw.text((x + pad_x, text_y), text, font=badge_font, fill=(15, 15, 15, 255))
         return y + capsule_h
 
-    y = 45
-    centered_text(y, "BENGUET DAILY UPDATE", title_font, WHITE)
-    y += 95
+    # Title with shadow for readability/impact
+    y = 55
+    title_text = "BENGUET DAILY UPDATE"
+    bbox = draw.textbbox((0, 0), title_text, font=title_font)
+    title_w = bbox[2] - bbox[0]
+    title_x = (width - title_w) / 2
+    draw.text((title_x + 3, y + 3), title_text, font=title_font, fill=(0, 0, 0, 160))
+    draw.text((title_x, y), title_text, font=title_font, fill=WHITE)
+    y += 130
+
+    # Thin accent underline centered under title
+    line_w = 200
+    draw.rectangle([((width - line_w) / 2, y), ((width + line_w) / 2, y + 4)], fill=ACCENT_GOLD)
+    y += 40
 
     y = section_badge(MARGIN, y, "WEATHER", ACCENT_BLUE)
-    y += 22
+    y += 24
 
     weather_lines = [get_weather(c) for c in CITIES]
     num_cols = 3
     col_width = (width - MARGIN * 2) // num_cols
-    row_height = 34
+    row_height = 36
     for i, line in enumerate(weather_lines):
         col = i % num_cols
         row = i // num_cols
         x = MARGIN + col * col_width
         line_y = y + row * row_height
-        draw.ellipse([(x, line_y + 7), (x + 8, line_y + 15)], fill=ACCENT_BLUE)
-        draw.text((x + 16, line_y), line, font=text_font, fill=WHITE)
+        draw.ellipse([(x, line_y + 8), (x + 9, line_y + 17)], fill=ACCENT_BLUE)
+        draw.text((x + 18, line_y), line, font=text_font, fill=WHITE)
 
     num_rows = (len(weather_lines) + num_cols - 1) // num_cols
-    y += num_rows * row_height + 28
+    y += num_rows * row_height + 30
 
     y = section_badge(MARGIN, y, "CURRENCY", ACCENT_GREEN)
-    y += 22
-    draw.ellipse([(MARGIN, y + 7), (MARGIN + 8, y + 15)], fill=ACCENT_GREEN)
-    draw.text((MARGIN + 16, y), get_forex(), font=text_font, fill=WHITE)
-    y += 44
+    y += 24
+    draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GREEN)
+    draw.text((MARGIN + 18, y), get_forex(), font=text_font, fill=WHITE)
+    y += 48
 
     y = section_badge(MARGIN, y, "GOLD", ACCENT_GOLD)
-    y += 22
-    draw.ellipse([(MARGIN, y + 7), (MARGIN + 8, y + 15)], fill=ACCENT_GOLD)
-    draw.text((MARGIN + 16, y), get_gold(), font=text_font, fill=WHITE)
+    y += 24
+    draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GOLD)
+    draw.text((MARGIN + 18, y), get_gold(), font=text_font, fill=WHITE)
     y += 55
 
     today = datetime.now().strftime("%B %d, %Y")
-    draw.rectangle([(0, height - 55), (width, height)], fill=(0, 0, 0, 140))
-    draw.text((MARGIN, height - 42), today, font=small_font, fill=WHITE)
+    draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 150))
+    draw.text((MARGIN, height - 45), today, font=small_font, fill=WHITE)
 
     buffer = BytesIO()
     img.save(buffer, format="JPEG")
