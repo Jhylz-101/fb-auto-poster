@@ -50,7 +50,8 @@ def get_font(size):
         return ImageFont.load_default()
 
 def generate_background():
-    prompt = random.choice(BACKGROUND_PROMPTS)
+    scene = random.choice(BACKGROUND_PROMPTS)
+    prompt = f"{scene}, poster design with bold large white text at the top saying 'BENGUET DAILY UPDATE', professional typography, clean modern font"
     url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height=1080"
     response = requests.get(url)
     img = Image.open(BytesIO(response.content)).convert("RGB")
