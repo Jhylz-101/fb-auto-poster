@@ -97,19 +97,35 @@ def build_image():
         draw.text((x + pad_x, text_y), text, font=badge_font, fill=(15, 15, 15, 255))
         return y + capsule_h
 
-    # Title - large, bold, with background bar for maximum visibility
-    title_font_big = get_font(90)
+    # Title rendered separately and force-scaled to guarantee size
     title_text = "BENGUET"
     subtitle_text = "DAILY UPDATE"
 
-    title_bbox = draw.textbbox((0, 0), title_text, font=title_font_big)
-    title_w = title_bbox[2] - title_bbox[0]
-    title_x = (width - title_w) / 2
+    temp_font = get_font(100)
+    temp_img = Image.new("RGBA", (1000, 150), (0, 0, 0, 0))
+    temp_draw = ImageDraw.Draw(temp_img)
+    temp_draw.text((10, 10), title_text, font=temp_font, fill=WHITE)
+    bbox = temp_draw.textbbox((10, 10), title_text, font=temp_font)
+    cropped = temp_img.crop((bbox[0] - 5, bbox[1] - 5, bbox[2] + 5, bbox[3] + 5))
+
+    target_height = 110
+    scale = target_height / cropped.height
+    new_width = int(cropped.width * scale)
+    resized_title = cropped.resize((new_width, target_height), Image.LANCZOS)
+
+    draw.rectangle([(0, 0), (width, 220)], fill=(0, 0, 0, 130))
+
+    title_x = (width - new_width) // 2
+    img.paste(resized_title, (title_x, 30), resized_title)
 
     sub_bbox = draw.textbbox((0, 0), subtitle_text, font=badge_font)
     sub_w = sub_bbox[2] - sub_bbox[0]
     sub_x = (width - sub_w) / 2
+    draw.text((sub_x, 150), subtitle_text, font=badge_font, fill=ACCENT_GOLD)
 
+    line_w = 220
+    draw.rectangle([((width - line_w) / 2, 195), ((width + line_w) / 2, 199)], fill=ACCENT_GOLD)
+    y = 235
     # Dark banner behind title for contrast regardless of photo
     draw.rectangle([(0, 0), (width, 210)], fill=(0, 0, 0, 130))
 
