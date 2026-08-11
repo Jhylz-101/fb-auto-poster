@@ -115,7 +115,7 @@ def send_photo_for_approval(image_buffer):
     response = requests.post(url, files=files, data=data)
     return response.json()
 
-def listen_for_response(timeout_seconds=300):
+def listen_for_response(timeout_seconds=60):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
     last_update_id = None
     start_time = time.time()
