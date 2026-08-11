@@ -4,15 +4,13 @@ import json
 import random
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime
 
 BOT_TOKEN = "8919908599:AAGTBdy69N5NFXY5KTIMhTkO7q2VpOXwYa8"
 CHAT_ID = "7898015877"
 WEATHER_API_KEY = "84eaa833c8842565474aa84d53094962"
 EXCHANGE_API_KEY = "b174a7c95ab92ab9e9a39a75"
 GOLD_API_KEY = "goldapi-cc32e7d2de735906d4e7ac171ac3fb6e-io"
-SUPABASE_URL = "https://xsjhgocorinncafcpbmv.supabase.co"
-SUPABASE_KEY = "sb_secret_5fl8wEbkxKPLju6VLJr2eA_UJljgjER"
 
 CITIES = ["Baguio", "La Trinidad", "Atok", "Bakun", "Bokod", "Buguias", "Itogon", "Kabayan", "Kapangan", "Kibungan", "Mankayan", "Sablan", "Tuba", "Tublay"]
 
@@ -31,39 +29,18 @@ def get_weather(city):
     condition = data["weather"][0]["description"]
     return f"{city}: {temp}C, {condition}"
 
-def get_forex_value():
+def get_forex():
     url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/latest/USD"
     data = requests.get(url).json()
-    return data["conversion_rates"]["PHP"]
+    rate = data["conversion_rates"]["PHP"]
+    return f"1 USD = PHP {rate:.2f}"
 
-def get_gold_value():
+def get_gold():
     url = "https://www.goldapi.io/api/XAU/PHP"
     headers = {"x-access-token": GOLD_API_KEY}
     data = requests.get(url, headers=headers).json()
-    return data["price_gram_24k"]
-
-def save_today_prices(usd_php, gold_php):
-    url = f"{SUPABASE_URL}/rest/v1/daily_prices"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}",
-        "Content-Type": "application/json"
-    }
-    today = datetime.now().strftime("%Y-%m-%d")
-    payload = {"date": today, "usd_php": usd_php, "gold_php": gold_php}
-    requests.post(url, headers=headers, json=payload)
-
-def get_yesterday_prices():
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    url = f"{SUPABASE_URL}/rest/v1/daily_prices?date=eq.{yesterday}&select=usd_php,gold_php"
-    headers = {
-        "apikey": SUPABASE_KEY,
-        "Authorization": f"Bearer {SUPABASE_KEY}"
-    }
-    response = requests.get(url, headers=headers).json()
-    if response and len(response) > 0:
-        return response[0]["usd_php"], response[0]["gold_php"]
-    return None, None
+    price_per_gram = data["price_gram_24k"]
+    return f"PHP {price_per_gram:,.2f}/gram (24k)"
 
 def get_font(size):
     return ImageFont.load_default(size=size)
@@ -76,11 +53,6 @@ def generate_background():
     return img
 
 def build_image():
-    today_usd = get_forex_value()
-    today_gold = get_gold_value()
-    yesterday_usd, yesterday_gold = get_yesterday_prices()
-    save_today_prices(today_usd, today_gold)
-
     img = generate_background()
     overlay = Image.new("RGBA", img.size, (10, 15, 30, 90))
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
@@ -96,7 +68,6 @@ def build_image():
     ACCENT_GREEN = (110, 210, 130, 255)
     ACCENT_GOLD = (255, 195, 90, 255)
     WHITE = (255, 255, 255, 255)
-    GRAY = (200, 200, 200, 255)
 
     MARGIN = 55
     GUTTER = 40
@@ -155,22 +126,14 @@ def build_image():
     y = section_badge(MARGIN, y, "CURRENCY", ACCENT_GREEN)
     y += 24
     draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GREEN)
-    draw.text((MARGIN + 18, y), f"1 USD = PHP {today_usd:.2f}", font=text_font, fill=WHITE)
-    y += 32
-    if yesterday_usd:
-        draw.text((MARGIN + 18, y), f"Yesterday: PHP {yesterday_usd:.2f}", font=small_font, fill=GRAY)
-        y += 32
-    y += 20
+    draw.text((MARGIN + 18, y), get_forex(), font=text_font, fill=WHITE)
+    y += 48
 
     y = section_badge(MARGIN, y, "GOLD", ACCENT_GOLD)
     y += 24
     draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GOLD)
-    draw.text((MARGIN + 18, y), f"PHP {today_gold:,.2f}/gram (24k)", font=text_font, fill=WHITE)
-    y += 32
-    if yesterday_gold:
-        draw.text((MARGIN + 18, y), f"Yesterday: PHP {yesterday_gold:,.2f}", font=small_font, fill=GRAY)
-        y += 32
-    y += 30
+    draw.text((MARGIN + 18, y), get_gold(), font=text_font, fill=WHITE)
+    y += 55
 
     today = datetime.now().strftime("%B %d, %Y")
     draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 150))
