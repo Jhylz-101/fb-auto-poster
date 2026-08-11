@@ -57,49 +57,70 @@ def generate_background():
 
 def build_image():
     img = generate_background()
-    overlay = Image.new("RGBA", img.size, (0, 0, 0, 100))
+    overlay = Image.new("RGBA", img.size, (10, 15, 30, 90))
     img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
 
     draw = ImageDraw.Draw(img, "RGBA")
     width, height = img.size
 
-    title_font = get_font(48)
-    header_font = get_font(30)
-    text_font = get_font(26)
+    title_font = get_font(52)
+    badge_font = get_font(26)
+    text_font = get_font(24)
     small_font = get_font(20)
 
-    draw.rectangle([(0, 0), (width, 130)], fill=(0, 0, 0, 160))
-    draw.text((40, 40), "BENGUET DAILY UPDATE", font=title_font, fill="white")
+    ACCENT_BLUE = (86, 180, 233, 255)
+    ACCENT_GREEN = (110, 210, 130, 255)
+    ACCENT_GOLD = (255, 195, 90, 255)
+    WHITE = (255, 255, 255, 255)
 
-    card_top = 170
-    card_bottom = height - 90
-    draw.rounded_rectangle([(40, card_top), (width - 40, card_bottom)], radius=24, fill=(20, 20, 20, 150))
+    def section_badge(x, y, text, color):
+        text_w = draw.textlength(text, font=badge_font)
+        pad_x, pad_y = 22, 10
+        draw.rounded_rectangle(
+            [(x, y), (x + text_w + pad_x * 2, y + 44)],
+            radius=22, fill=color
+        )
+        draw.text((x + pad_x, y + pad_y), text, font=badge_font, fill=(15, 15, 15, 255))
+        return y + 44
 
-    y = card_top + 30
-    x = 70
+    # Title
+    y = 50
+    draw.text((50, y), "BENGUET DAILY UPDATE", font=title_font, fill=WHITE)
+    y += 90
 
-    draw.text((x, y), "WEATHER", font=header_font, fill=(255, 210, 120, 255))
-    y += 50
-    weather_lines = [get_weather(c) for c in CITIES[:5]]
-    for line in weather_lines:
-        draw.text((x, y), line, font=text_font, fill="white")
-        y += 38
+    # Weather badge + 2-column grid
+    y = section_badge(50, y, "WEATHER", ACCENT_BLUE)
+    y += 25
 
-    y += 20
-    draw.line([(x, y), (width - 70, y)], fill=(255, 255, 255, 60), width=1)
-    y += 20
+    weather_lines = [get_weather(c) for c in CITIES[:6]]
+    col_width = (width - 100) // 2
+    for i, line in enumerate(weather_lines):
+        col = i % 2
+        row = i // 2
+        x = 50 + col * col_width
+        line_y = y + row * 42
+        draw.ellipse([(x, line_y + 8), (x + 10, line_y + 18)], fill=ACCENT_BLUE)
+        draw.text((x + 22, line_y), line, font=text_font, fill=WHITE)
+    y += ((len(weather_lines) + 1) // 2) * 42 + 40
 
-    draw.text((x, y), "CURRENCY", font=header_font, fill=(255, 210, 120, 255))
-    y += 50
-    draw.text((x, y), get_forex(), font=text_font, fill="white")
-    y += 45
+    # Currency badge
+    y = section_badge(50, y, "CURRENCY", ACCENT_GREEN)
+    y += 25
+    draw.ellipse([(50, y + 8), (60, y + 18)], fill=ACCENT_GREEN)
+    draw.text((72, y), get_forex(), font=text_font, fill=WHITE)
+    y += 60
 
-    draw.text((x, y), "GOLD", font=header_font, fill=(255, 210, 120, 255))
-    y += 50
-    draw.text((x, y), get_gold(), font=text_font, fill="white")
+    # Gold badge
+    y = section_badge(50, y, "GOLD", ACCENT_GOLD)
+    y += 25
+    draw.ellipse([(50, y + 8), (60, y + 18)], fill=ACCENT_GOLD)
+    draw.text((72, y), get_gold(), font=text_font, fill=WHITE)
+    y += 60
 
+    # Footer
     today = datetime.now().strftime("%B %d, %Y")
-    draw.text((40, height - 60), today, font=small_font, fill=(255, 255, 255, 180))
+    draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 140))
+    draw.text((50, height - 45), today, font=small_font, fill=WHITE)
 
     buffer = BytesIO()
     img.save(buffer, format="JPEG")
