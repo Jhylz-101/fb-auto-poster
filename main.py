@@ -63,7 +63,7 @@ def build_image():
     badge_font = get_font(30)
     text_font = get_font(24)
     small_font = get_font(20)
-    huge_title_font = get_font(140)
+    huge_title_font = get_font(55)
 
     ACCENT_BLUE = (86, 180, 233, 255)
     ACCENT_GREEN = (110, 210, 130, 255)
@@ -90,10 +90,10 @@ def build_image():
     bbox = draw.textbbox((0, 0), title_text, font=huge_title_font)
     title_w = bbox[2] - bbox[0]
     title_x = (width - title_w) / 2
-    draw.rectangle([(0, 0), (width, 260)], fill=(0, 0, 0, 150))
+    draw.rectangle([(0, 0), (width, 140)], fill=(0, 0, 0, 150))
     draw.text((title_x, 40), title_text, font=huge_title_font, fill=WHITE)
 
-    y = 290
+    y = 170
 
     y = section_badge(MARGIN, y, "WEATHER", ACCENT_BLUE)
     y += 24
