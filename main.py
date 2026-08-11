@@ -40,7 +40,7 @@ def get_gold():
     headers = {"x-access-token": GOLD_API_KEY}
     data = requests.get(url, headers=headers).json()
     price_per_gram = data["price_gram_24k"]
-    return f"Gold: {price_per_gram:,.2f}/gram (24k)"
+    return f"PHP {price_per_gram:,.2f}/gram (24k pure gold)"
 
 def get_font(size):
     return ImageFont.load_default(size=size)
