@@ -43,10 +43,7 @@ def get_gold():
     return f"Gold: {price_per_gram:,.2f}/gram (24k)"
 
 def get_font(size):
-    try:
-        return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
-    except:
-        return ImageFont.load_default()
+    return ImageFont.load_default(size=size)
 
 def generate_background():
     prompt = random.choice(BACKGROUND_PROMPTS)
