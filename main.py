@@ -133,10 +133,10 @@ def build_image():
     y += 24
     draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GOLD)
     draw.text((MARGIN + 18, y), get_gold(), font=text_font, fill=WHITE)
-    y += 55
+    y += 100
 
     today = datetime.now().strftime("%B %d, %Y")
-    draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 150))
+    draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 180))
     draw.text((MARGIN, height - 45), today, font=small_font, fill=WHITE)
 
     buffer = BytesIO()
