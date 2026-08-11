@@ -65,3 +65,93 @@ def build_image():
 
     title_font = get_font(48)
     header_font = get_font(30)
+    text_font = get_font(26)
+    small_font = get_font(20)
+
+    draw.rectangle([(0, 0), (width, 130)], fill=(0, 0, 0, 160))
+    draw.text((40, 40), "BENGUET DAILY UPDATE", font=title_font, fill="white")
+
+    card_top = 170
+    card_bottom = height - 90
+    draw.rounded_rectangle([(40, card_top), (width - 40, card_bottom)], radius=24, fill=(20, 20, 20, 150))
+
+    y = card_top + 30
+    x = 70
+
+    draw.text((x, y), "WEATHER", font=header_font, fill=(255, 210, 120, 255))
+    y += 50
+    weather_lines = [get_weather(c) for c in CITIES[:5]]
+    for line in weather_lines:
+        draw.text((x, y), line, font=text_font, fill="white")
+        y += 38
+
+    y += 20
+    draw.line([(x, y), (width - 70, y)], fill=(255, 255, 255, 60), width=1)
+    y += 20
+
+    draw.text((x, y), "CURRENCY", font=header_font, fill=(255, 210, 120, 255))
+    y += 50
+    draw.text((x, y), get_forex(), font=text_font, fill="white")
+    y += 45
+
+    draw.text((x, y), "GOLD", font=header_font, fill=(255, 210, 120, 255))
+    y += 50
+    draw.text((x, y), get_gold(), font=text_font, fill="white")
+
+    today = datetime.now().strftime("%B %d, %Y")
+    draw.text((40, height - 60), today, font=small_font, fill=(255, 255, 255, 180))
+
+    buffer = BytesIO()
+    img.save(buffer, format="JPEG")
+    buffer.seek(0)
+    return buffer
+
+def send_photo_for_approval(image_buffer):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "Approve", "callback_data": "approve"},
+            {"text": "Reject", "callback_data": "reject"}
+        ]]
+    }
+    files = {"photo": ("update.jpg", image_buffer, "image/jpeg")}
+    data = {
+        "chat_id": CHAT_ID,
+        "reply_markup": json.dumps(keyboard)
+    }
+    response = requests.post(url, files=files, data=data)
+    return response.json()
+
+def listen_for_response(timeout_seconds=300):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    last_update_id = None
+    start_time = time.time()
+
+    while time.time() - start_time < timeout_seconds:
+        params = {"timeout": 10}
+        if last_update_id:
+            params["offset"] = last_update_id + 1
+
+        response = requests.get(url, params=params).json()
+
+        for update in response.get("result", []):
+            last_update_id = update["update_id"]
+            if "callback_query" in update:
+                data = update["callback_query"]["data"]
+                requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    data={"chat_id": CHAT_ID, "text": f"You selected: {data}"}
+                )
+                return data
+
+        time.sleep(2)
+
+    return "timeout"
+
+if __name__ == "__main__":
+    image_buffer = build_image()
+    time.sleep(2)
+    result = send_photo_for_approval(image_buffer)
+    print("SEND RESULT:", result)
+    decision = listen_for_response()
+    print(f"Final decision: {decision}")
