@@ -61,7 +61,7 @@ def build_image():
     width, height = img.size
 
     badge_font = get_font(30)
-    text_font = get_font(24)
+    text_font = get_font(19)
     small_font = get_font(20)
     huge_title_font = get_font(55)
 
@@ -71,6 +71,7 @@ def build_image():
     WHITE = (255, 255, 255, 255)
 
     MARGIN = 55
+    GUTTER = 40
 
     def section_badge(x, y, text, color):
         bbox = draw.textbbox((0, 0), text, font=badge_font)
@@ -100,15 +101,15 @@ def build_image():
 
     weather_lines = [get_weather(c) for c in CITIES]
     num_cols = 2
-    col_width = (width - MARGIN * 2) // num_cols
-    row_height = 36
+    col_width = (width - MARGIN * 2 - GUTTER * (num_cols - 1)) // num_cols
+    row_height = 34
     for i, line in enumerate(weather_lines):
         col = i % num_cols
         row = i // num_cols
-        x = MARGIN + col * col_width
+        x = MARGIN + col * (col_width + GUTTER)
         line_y = y + row * row_height
-        draw.ellipse([(x, line_y + 8), (x + 9, line_y + 17)], fill=ACCENT_BLUE)
-        draw.text((x + 18, line_y), line, font=text_font, fill=WHITE)
+        draw.ellipse([(x, line_y + 7), (x + 8, line_y + 15)], fill=ACCENT_BLUE)
+        draw.text((x + 15, line_y), line, font=text_font, fill=WHITE)
 
     num_rows = (len(weather_lines) + num_cols - 1) // num_cols
     y += num_rows * row_height + 30
