@@ -1,4 +1,6 @@
 import requests
+import time
+import json
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 
@@ -15,26 +17,27 @@ def get_weather(city):
     data = requests.get(url).json()
     temp = data["main"]["temp"]
     condition = data["weather"][0]["description"]
-    return f"{city}: {temp}°C, {condition}"
+    return f"{city}: {temp}C, {condition}"
 
 def get_forex():
     url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/latest/USD"
     data = requests.get(url).json()
     rate = data["conversion_rates"]["PHP"]
-    return f"USD to PHP: ₱{rate:.2f}"
+    return f"USD to PHP: {rate:.2f}"
 
 def get_gold():
     url = "https://www.goldapi.io/api/XAU/PHP"
     headers = {"x-access-token": GOLD_API_KEY}
     data = requests.get(url, headers=headers).json()
     price_per_gram = data["price_gram_24k"]
-    return f"Gold: ₱{price_per_gram:,.2f}/gram (24k)"
+    return f"Gold: {price_per_gram:,.2f}/gram (24k)"
 
 def get_font(size):
     try:
         return ImageFont.truetype("DejaVuSans-Bold.ttf", size)
     except:
         return ImageFont.load_default()
+
 def generate_background():
     prompt = "misty mountain highland landscape, golden hour, minimalist, soft colors"
     url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height=1080"
@@ -70,14 +73,50 @@ def build_image():
     buffer.seek(0)
     return buffer
 
-def send_photo(image_buffer):
+def send_photo_for_approval(image_buffer):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "Approve", "callback_data": "approve"},
+            {"text": "Reject", "callback_data": "reject"}
+        ]]
+    }
     files = {"photo": ("update.jpg", image_buffer, "image/jpeg")}
-    data = {"chat_id": CHAT_ID}
+    data = {
+        "chat_id": CHAT_ID,
+        "reply_markup": json.dumps(keyboard)
+    }
     response = requests.post(url, files=files, data=data)
     return response.json()
 
+def listen_for_response(timeout_seconds=300):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
+    last_update_id = None
+    start_time = time.time()
+
+    while time.time() - start_time < timeout_seconds:
+        params = {"timeout": 10}
+        if last_update_id:
+            params["offset"] = last_update_id + 1
+
+        response = requests.get(url, params=params).json()
+
+        for update in response.get("result", []):
+            last_update_id = update["update_id"]
+            if "callback_query" in update:
+                data = update["callback_query"]["data"]
+                requests.post(
+                    f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
+                    data={"chat_id": CHAT_ID, "text": f"You selected: {data}"}
+                )
+                return data
+
+        time.sleep(2)
+
+    return "timeout"
+
 if __name__ == "__main__":
     image_buffer = build_image()
-    result = send_photo(image_buffer)
-    print(result)
+    send_photo_for_approval(image_buffer)
+    decision = listen_for_response()
+    print(f"Final decision: {decision}")
