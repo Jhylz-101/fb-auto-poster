@@ -63,7 +63,7 @@ def build_image():
     draw = ImageDraw.Draw(img, "RGBA")
     width, height = img.size
 
-    title_font = get_font(48)
+    title_font = get_font(56)
     badge_font = get_font(24)
     text_font = get_font(20)
     small_font = get_font(18)
@@ -73,53 +73,65 @@ def build_image():
     ACCENT_GOLD = (255, 195, 90, 255)
     WHITE = (255, 255, 255, 255)
 
+    MARGIN = 50
+
+    def centered_text(y, text, font, fill):
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = bbox[2] - bbox[0]
+        x = (width - text_w) / 2
+        draw.text((x, y), text, font=font, fill=fill)
+
     def section_badge(x, y, text, color):
-        text_w = draw.textlength(text, font=badge_font)
-        pad_x, pad_y = 18, 8
+        bbox = draw.textbbox((0, 0), text, font=badge_font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+        pad_x, pad_y = 20, 12
+        capsule_h = text_h + pad_y * 2
         draw.rounded_rectangle(
-            [(x, y), (x + text_w + pad_x * 2, y + 38)],
-            radius=19, fill=color
+            [(x, y), (x + text_w + pad_x * 2, y + capsule_h)],
+            radius=capsule_h / 2, fill=color
         )
-        draw.text((x + pad_x, y + pad_y), text, font=badge_font, fill=(15, 15, 15, 255))
-        return y + 38
+        text_y = y + pad_y - bbox[1]
+        draw.text((x + pad_x, text_y), text, font=badge_font, fill=(15, 15, 15, 255))
+        return y + capsule_h
 
-    y = 40
-    draw.text((40, y), "BENGUET DAILY UPDATE", font=title_font, fill=WHITE)
-    y += 75
+    y = 45
+    centered_text(y, "BENGUET DAILY UPDATE", title_font, WHITE)
+    y += 95
 
-    y = section_badge(40, y, "WEATHER", ACCENT_BLUE)
-    y += 18
+    y = section_badge(MARGIN, y, "WEATHER", ACCENT_BLUE)
+    y += 22
 
     weather_lines = [get_weather(c) for c in CITIES]
     num_cols = 3
-    col_width = (width - 80) // num_cols
-    row_height = 32
+    col_width = (width - MARGIN * 2) // num_cols
+    row_height = 34
     for i, line in enumerate(weather_lines):
         col = i % num_cols
         row = i // num_cols
-        x = 40 + col * col_width
+        x = MARGIN + col * col_width
         line_y = y + row * row_height
         draw.ellipse([(x, line_y + 7), (x + 8, line_y + 15)], fill=ACCENT_BLUE)
         draw.text((x + 16, line_y), line, font=text_font, fill=WHITE)
 
     num_rows = (len(weather_lines) + num_cols - 1) // num_cols
-    y += num_rows * row_height + 25
+    y += num_rows * row_height + 28
 
-    y = section_badge(40, y, "CURRENCY", ACCENT_GREEN)
-    y += 18
-    draw.ellipse([(40, y + 7), (48, y + 15)], fill=ACCENT_GREEN)
-    draw.text((56, y), get_forex(), font=text_font, fill=WHITE)
-    y += 42
+    y = section_badge(MARGIN, y, "CURRENCY", ACCENT_GREEN)
+    y += 22
+    draw.ellipse([(MARGIN, y + 7), (MARGIN + 8, y + 15)], fill=ACCENT_GREEN)
+    draw.text((MARGIN + 16, y), get_forex(), font=text_font, fill=WHITE)
+    y += 44
 
-    y = section_badge(40, y, "GOLD", ACCENT_GOLD)
-    y += 18
-    draw.ellipse([(40, y + 7), (48, y + 15)], fill=ACCENT_GOLD)
-    draw.text((56, y), get_gold(), font=text_font, fill=WHITE)
-    y += 50
+    y = section_badge(MARGIN, y, "GOLD", ACCENT_GOLD)
+    y += 22
+    draw.ellipse([(MARGIN, y + 7), (MARGIN + 8, y + 15)], fill=ACCENT_GOLD)
+    draw.text((MARGIN + 16, y), get_gold(), font=text_font, fill=WHITE)
+    y += 55
 
     today = datetime.now().strftime("%B %d, %Y")
     draw.rectangle([(0, height - 55), (width, height)], fill=(0, 0, 0, 140))
-    draw.text((40, height - 42), today, font=small_font, fill=WHITE)
+    draw.text((MARGIN, height - 42), today, font=small_font, fill=WHITE)
 
     buffer = BytesIO()
     img.save(buffer, format="JPEG")
