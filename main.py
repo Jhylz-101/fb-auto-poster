@@ -72,9 +72,16 @@ LOCAL_KEYWORDS = [
     "pagasa", "car-car"
 ]
 
+FEED_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Accept": "application/rss+xml, application/xml, text/xml, */*"
+}
+
 def get_articles_from_feed(feed_url, limit=6):
     try:
-        response = requests.get(feed_url, timeout=10)
+        response = requests.get(feed_url, headers=FEED_HEADERS, timeout=10)
+        response.raise_for_status()
         root = ET.fromstring(response.content)
         items = root.findall(".//item")[:limit]
         articles = []
@@ -90,7 +97,8 @@ def get_articles_from_feed(feed_url, limit=6):
             if title:
                 articles.append({"title": title.strip(), "description": desc, "link": link, "position": position})
         return articles
-    except Exception:
+    except Exception as e:
+        print(f"  [feed error] {feed_url} -> {type(e).__name__}: {e}")
         return []
 
 def is_local_article(article):
@@ -118,7 +126,9 @@ def source_rank(name):
 def gather_news():
     all_articles = []
     for name, url in NEWS_SOURCES.items():
-        for article in get_articles_from_feed(url, limit=6):
+        articles = get_articles_from_feed(url, limit=6)
+        print(f"  [news source] {name}: {len(articles)} articles fetched")
+        for article in articles:
             all_articles.append({"source": name, **article})
 
     all_articles = [a for a in all_articles if not is_excluded_article(a)]
