@@ -60,21 +60,33 @@ def get_gold():
 
 # ---------- News ----------
 
-def get_raw_headline(source_name, feed_url):
+def get_headlines_from_feed(feed_url, limit=5):
     try:
         response = requests.get(feed_url, timeout=10)
         root = ET.fromstring(response.content)
-        title = root.find(".//item/title").text
-        return title.strip()
+        items = root.findall(".//item/title")[:limit]
+        return [item.text.strip() for item in items if item.text]
     except Exception:
-        return None
+        return []
 
-def build_news_narrative():
-    headlines = []
+def build_news_narrative(target_count=5):
+    source_headlines = {}
     for name, url in NEWS_SOURCES.items():
-        title = get_raw_headline(name, url)
-        if title:
-            headlines.append((name, title))
+        source_headlines[name] = get_headlines_from_feed(url, limit=target_count)
+
+    headlines = []
+    idx = 0
+    while len(headlines) < target_count:
+        added_any = False
+        for name in NEWS_SOURCES:
+            if idx < len(source_headlines[name]):
+                headlines.append((name, source_headlines[name][idx]))
+                added_any = True
+                if len(headlines) >= target_count:
+                    break
+        if not added_any:
+            break
+        idx += 1
 
     if not headlines:
         return ["No headlines available right now."]
@@ -254,9 +266,9 @@ def build_weather_html():
   .body p + p {{ margin-top:18px; }}
   .body b {{ color:#ffd98a; font-weight:700; }}
 
-  .towns {{ margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:9px 30px; }}
-  .town {{ color:#cfe2ee; font-size:19px; font-weight:500; display:flex; align-items:center; gap:10px; }}
-  .town::before {{ content:''; width:7px; height:7px; border-radius:50%; background:#5b9bd5; flex-shrink:0; }}
+  .towns {{ margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:16px 30px; }}
+  .town {{ color:#eef4f8; font-size:27px; font-weight:600; display:flex; align-items:center; gap:10px; }}
+  .town::before {{ content:''; width:9px; height:9px; border-radius:50%; background:#5b9bd5; flex-shrink:0; }}
 
   .footer {{ margin-top:auto; display:flex; justify-content:space-between; align-items:flex-end; padding-top:26px; }}
   .brand {{ color:#7fa6bd; font-size:20px; font-weight:700; letter-spacing:2px; }}
@@ -341,7 +353,7 @@ def build_news_image():
     width, height = img.size
 
     badge_font = get_font(30)
-    text_font = get_font(22)
+    text_font = get_font(19)
     small_font = get_font(20)
     huge_title_font = get_font(55)
 
@@ -357,8 +369,8 @@ def build_news_image():
         wrapped = wrap_text(draw, paragraph, text_font, max_text_width)
         for line in wrapped:
             draw.text((MARGIN, y), line, font=text_font, fill=WHITE)
-            y += 32
-        y += 18
+            y += 28
+        y += 14
 
     today = datetime.now().strftime("%B %d, %Y")
     draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 180))
