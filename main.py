@@ -2,6 +2,8 @@ import requests
 import time
 import json
 import random
+import re
+import html as html_lib
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -60,46 +62,31 @@ def get_gold():
 
 # ---------- News ----------
 
-def get_headlines_from_feed(feed_url, limit=5):
+def get_articles_from_feed(feed_url, limit=5):
     try:
         response = requests.get(feed_url, timeout=10)
         root = ET.fromstring(response.content)
-        items = root.findall(".//item/title")[:limit]
-        return [item.text.strip() for item in items if item.text]
+        items = root.findall(".//item")[:limit]
+        articles = []
+        for item in items:
+            title_el = item.find("title")
+            desc_el = item.find("description")
+            title = title_el.text.strip() if title_el is not None and title_el.text else None
+            desc_raw = desc_el.text.strip() if desc_el is not None and desc_el.text else ""
+            desc = re.sub(r"<[^>]+>", "", desc_raw)
+            desc = html_lib.unescape(desc).strip()
+            if title:
+                articles.append({"title": title.strip(), "description": desc})
+        return articles
     except Exception:
         return []
 
-def build_news_narrative(target_count=5):
-    source_headlines = {}
+def gather_news():
+    all_articles = []
     for name, url in NEWS_SOURCES.items():
-        source_headlines[name] = get_headlines_from_feed(url, limit=target_count)
-
-    headlines = []
-    idx = 0
-    while len(headlines) < target_count:
-        added_any = False
-        for name in NEWS_SOURCES:
-            if idx < len(source_headlines[name]):
-                headlines.append((name, source_headlines[name][idx]))
-                added_any = True
-                if len(headlines) >= target_count:
-                    break
-        if not added_any:
-            break
-        idx += 1
-
-    if not headlines:
-        return ["No headlines available right now."]
-
-    lines = []
-    first_name, first_title = headlines[0]
-    lines.append(f"Today's top story: {first_title} ({first_name}).")
-
-    for i, (name, title) in enumerate(headlines[1:], start=1):
-        connector = CONNECTORS[i % len(CONNECTORS)]
-        lines.append(f"{connector}{title} ({name}).")
-
-    return lines
+        for article in get_articles_from_feed(url, limit=3):
+            all_articles.append({"source": name, **article})
+    return all_articles
 
 # ---------- Shared image helpers (Pillow, used by currency/gold + news) ----------
 
@@ -342,44 +329,115 @@ def build_currency_gold_image():
     buffer.seek(0)
     return buffer
 
-# ---------- News (Pillow, unchanged) ----------
+# ---------- News (HTML/Playwright narrative-style) ----------
+
+def truncate_text(text, max_len=340):
+    text = " ".join(text.split())
+    if len(text) <= max_len:
+        return text
+    return text[:max_len].rsplit(" ", 1)[0] + "…"
+
+def build_news_html():
+    articles = gather_news()
+    today = datetime.now().strftime("%B %d, %Y")
+
+    if not articles:
+        top = {"source": "", "title": "No headlines available today", "description": ""}
+        rest = []
+    else:
+        top = articles[0]
+        rest = articles[1:5]
+
+    lede_text = truncate_text(top["description"]) if top["description"] else "Full details available from the source below."
+
+    rest_html = ""
+    for a in rest:
+        rest_html += f'      <div class="item"><span class="dot"></span><span class="itext">{a["title"]}</span><span class="src">{a["source"]}</span></div>\n'
+
+    rest_section = ""
+    if rest_html:
+        rest_section = f"""
+    <div class="also">
+      <div class="also-label">Also in the news</div>
+{rest_html}    </div>"""
+
+    source_label = top["source"] if top["source"] else "Wire"
+
+    html_out = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#141414; position:relative; overflow:hidden; }}
+
+  .bg {{ position:absolute; inset:0; background: linear-gradient(180deg, #0d0d0d 0%, #1a1414 55%, #241412 100%); }}
+  .texture {{ position:absolute; inset:0; opacity:0.06; background-image: repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px); }}
+
+  .content {{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; }}
+
+  .topbar {{ display:flex; justify-content:space-between; align-items:center; padding:44px 70px 0; }}
+  .brand {{ color:#b02e26; font-size:22px; font-weight:800; letter-spacing:3px; }}
+  .date {{ color:#9a9a9a; font-size:20px; font-weight:500; }}
+
+  .badge {{
+    margin:32px 70px 0; align-self:flex-start;
+    background:#b02e26; color:#fff; font-weight:800; font-size:22px; letter-spacing:3px;
+    padding:11px 24px; text-transform:uppercase;
+  }}
+
+  .headline {{
+    font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:52px; line-height:1.1;
+    padding:24px 70px 0; text-transform:none;
+  }}
+
+  .rule {{ height:2px; background:#3a3a3a; margin:32px 70px 0; }}
+
+  .lede {{ color:#e3ded3; font-size:25px; line-height:1.55; padding:30px 70px 0; font-weight:400; }}
+
+  .also {{ margin:36px 70px 0; border-top:1px solid #3a3a3a; padding-top:28px; }}
+  .also-label {{ color:#8a8a8a; font-size:16px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:16px; }}
+  .item {{ display:flex; align-items:flex-start; gap:12px; margin-top:14px; }}
+  .item .dot {{ width:7px; height:7px; border-radius:50%; background:#b02e26; flex-shrink:0; margin-top:9px; }}
+  .item .itext {{ color:#d8d2c6; font-size:19px; line-height:1.4; flex:1; }}
+  .item .src {{ color:#8a8a8a; font-size:15px; white-space:nowrap; margin-top:2px; }}
+
+  .footer {{ margin-top:auto; display:flex; justify-content:space-between; align-items:center; padding:32px 70px 42px; border-top:1px solid #3a3a3a; }}
+  .source {{ color:#8a8a8a; font-size:18px; }}
+  .cta {{ color:#f0a97a; font-size:18px; font-weight:700; }}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="texture"></div>
+  <div class="content">
+    <div class="topbar">
+      <div class="brand">BENGUET DAILY UPDATE</div>
+      <div class="date">{today}</div>
+    </div>
+
+    <div class="badge">Top Story</div>
+
+    <div class="headline">{top["title"]}</div>
+
+    <div class="rule"></div>
+
+    <div class="lede">{lede_text}</div>
+{rest_section}
+
+    <div class="footer">
+      <div class="source">Source: {source_label}</div>
+      <div class="cta">Full story via {source_label} →</div>
+    </div>
+  </div>
+</body>
+</html>"""
+    return html_out
 
 def build_news_image():
-    prompt = "newspaper stack, coffee cup, morning light, editorial desk aesthetic, formal, minimalist"
-    img = generate_background(prompt, height=1350)
-    overlay = Image.new("RGBA", img.size, (10, 15, 30, 100))
-    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-    draw = ImageDraw.Draw(img, "RGBA")
-    width, height = img.size
-
-    badge_font = get_font(30)
-    text_font = get_font(19)
-    small_font = get_font(20)
-    huge_title_font = get_font(55)
-
-    draw_title(draw, huge_title_font, width, "TODAY'S HEADLINES")
-    y = 200
-    y = section_badge(draw, badge_font, MARGIN, y, "NEWS ROUNDUP", ACCENT_RED)
-    y += 35
-
-    narrative_lines = build_news_narrative()
-    max_text_width = width - (MARGIN * 2)
-
-    for paragraph in narrative_lines:
-        wrapped = wrap_text(draw, paragraph, text_font, max_text_width)
-        for line in wrapped:
-            draw.text((MARGIN, y), line, font=text_font, fill=WHITE)
-            y += 28
-        y += 14
-
-    today = datetime.now().strftime("%B %d, %Y")
-    draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 180))
-    draw.text((MARGIN, height - 45), today, font=small_font, fill=WHITE)
-
-    buffer = BytesIO()
-    img.save(buffer, format="JPEG")
-    buffer.seek(0)
-    return buffer
+    html_out = build_news_html()
+    return render_html_to_png(html_out)
 
 # ---------- Telegram ----------
 
@@ -411,5 +469,5 @@ if __name__ == "__main__":
     time.sleep(2)
 
     news_img = build_news_image()
-    send_photo_for_approval(news_img, "news")
+    send_photo_for_approval(news_img, "news", filename="update.png", mime="image/png")
     print("Sent news post")
