@@ -2,7 +2,7 @@ import requests
 import time
 import json
 import random
-import os
+import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 from datetime import datetime
@@ -12,8 +12,6 @@ CHAT_ID = "7898015877"
 WEATHER_API_KEY = "84eaa833c8842565474aa84d53094962"
 EXCHANGE_API_KEY = "b174a7c95ab92ab9e9a39a75"
 GOLD_API_KEY = "goldapi-cc32e7d2de735906d4e7ac171ac3fb6e-io"
-FB_PAGE_TOKEN = os.environ.get("FB_PAGE_TOKEN")
-FB_PAGE_ID = os.environ.get("FB_PAGE_ID")
 
 CITIES = ["Baguio", "La Trinidad", "Atok", "Bakun", "Bokod", "Buguias", "Itogon", "Kabayan", "Kapangan", "Kibungan", "Mankayan", "Sablan", "Tuba", "Tublay"]
 
@@ -24,6 +22,12 @@ BACKGROUND_PROMPTS = [
     "highland valley with clouds below, warm sunset tones, minimalist",
     "mountain ridge silhouette, pastel sky, minimalist landscape"
 ]
+
+NEWS_SOURCES = {
+    "Rappler": "https://www.rappler.com/feed/",
+    "Inquirer": "https://www.inquirer.net/fullfeed",
+    "PhilStar": "https://www.philstar.com/rss/headlines"
+}
 
 def get_weather(city):
     url = f"https://api.openweathermap.org/data/2.5/weather?q={city},PH&appid={WEATHER_API_KEY}&units=metric"
@@ -45,12 +49,26 @@ def get_gold():
     price_per_gram = data["price_gram_24k"]
     return f"PHP {price_per_gram:,.2f}/gram (24k pure gold)"
 
+def get_headline(source_name, feed_url):
+    try:
+        response = requests.get(feed_url, timeout=10)
+        root = ET.fromstring(response.content)
+        title = root.find(".//item/title").text
+        if len(title) > 60:
+            title = title[:57] + "..."
+        return f"{source_name}: {title}"
+    except Exception:
+        return f"{source_name}: (unavailable)"
+
+def get_news_headlines():
+    return [get_headline(name, url) for name, url in NEWS_SOURCES.items()]
+
 def get_font(size):
     return ImageFont.load_default(size=size)
 
 def generate_background():
     prompt = random.choice(BACKGROUND_PROMPTS)
-    url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height=1080"
+    url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height=1350"
     response = requests.get(url)
     img = Image.open(BytesIO(response.content)).convert("RGB")
     return img
@@ -71,6 +89,7 @@ def build_image():
     ACCENT_BLUE = (86, 180, 233, 255)
     ACCENT_GREEN = (110, 210, 130, 255)
     ACCENT_GOLD = (255, 195, 90, 255)
+    ACCENT_RED = (230, 100, 100, 255)
     WHITE = (255, 255, 255, 255)
 
     MARGIN = 55
@@ -127,7 +146,16 @@ def build_image():
     y += 24
     draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GOLD)
     draw.text((MARGIN + 18, y), get_gold(), font=text_font, fill=WHITE)
-    y += 100
+    y += 55
+
+    y = section_badge(MARGIN, y, "NEWS", ACCENT_RED)
+    y += 24
+    news_lines = get_news_headlines()
+    for line in news_lines:
+        draw.ellipse([(MARGIN, y + 7), (MARGIN + 8, y + 15)], fill=ACCENT_RED)
+        draw.text((MARGIN + 15, y), line, font=text_font, fill=WHITE)
+        y += 32
+    y += 40
 
     today = datetime.now().strftime("%B %d, %Y")
     draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 180))
@@ -180,17 +208,6 @@ def listen_for_response(timeout_seconds=300):
 
     return "timeout"
 
-def post_to_facebook(image_buffer):
-    url = f"https://graph.facebook.com/{FB_PAGE_ID}/photos"
-    image_buffer.seek(0)
-    files = {"source": ("update.jpg", image_buffer, "image/jpeg")}
-    data = {
-        "caption": "Benguet Daily Update - Weather, Currency & Gold Prices",
-        "access_token": FB_PAGE_TOKEN
-    }
-    response = requests.post(url, files=files, data=data)
-    return response.json()
-
 if __name__ == "__main__":
     image_buffer = build_image()
     time.sleep(2)
@@ -198,12 +215,3 @@ if __name__ == "__main__":
     print("SEND RESULT:", result)
     decision = listen_for_response()
     print(f"Final decision: {decision}")
-
-    if decision == "approve":
-        image_buffer.seek(0)
-        fb_result = post_to_facebook(image_buffer)
-        print("FACEBOOK POST RESULT:", fb_result)
-        requests.post(
-            f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage",
-            data={"chat_id": CHAT_ID, "text": "Posted to Facebook successfully!"}
-        )
