@@ -62,7 +62,14 @@ def get_gold():
 
 # ---------- News ----------
 
-def get_articles_from_feed(feed_url, limit=5):
+LOCAL_KEYWORDS = [
+    "benguet", "baguio", "la trinidad", "cordillera", "car region",
+    "itogon", "atok", "buguias", "kabayan", "kapangan", "kibungan",
+    "mankayan", "sablan", "tuba", "tublay", "bokod", "bakun",
+    "pagasa", "car-car"
+]
+
+def get_articles_from_feed(feed_url, limit=6):
     try:
         response = requests.get(feed_url, timeout=10)
         root = ET.fromstring(response.content)
@@ -71,22 +78,32 @@ def get_articles_from_feed(feed_url, limit=5):
         for item in items:
             title_el = item.find("title")
             desc_el = item.find("description")
+            link_el = item.find("link")
             title = title_el.text.strip() if title_el is not None and title_el.text else None
             desc_raw = desc_el.text.strip() if desc_el is not None and desc_el.text else ""
             desc = re.sub(r"<[^>]+>", "", desc_raw)
             desc = html_lib.unescape(desc).strip()
+            link = link_el.text.strip() if link_el is not None and link_el.text else ""
             if title:
-                articles.append({"title": title.strip(), "description": desc})
+                articles.append({"title": title.strip(), "description": desc, "link": link})
         return articles
     except Exception:
         return []
 
+def is_local_article(article):
+    text = (article["title"] + " " + article["description"]).lower()
+    return any(keyword in text for keyword in LOCAL_KEYWORDS)
+
 def gather_news():
     all_articles = []
     for name, url in NEWS_SOURCES.items():
-        for article in get_articles_from_feed(url, limit=3):
+        for article in get_articles_from_feed(url, limit=6):
             all_articles.append({"source": name, **article})
-    return all_articles
+
+    local_articles = [a for a in all_articles if is_local_article(a)]
+    other_articles = [a for a in all_articles if not is_local_article(a)]
+
+    return local_articles + other_articles
 
 # ---------- Shared image helpers (Pillow, used by currency/gold + news) ----------
 
@@ -337,12 +354,11 @@ def truncate_text(text, max_len=340):
         return text
     return text[:max_len].rsplit(" ", 1)[0] + "…"
 
-def build_news_html():
-    articles = gather_news()
+def build_news_html(articles):
     today = datetime.now().strftime("%B %d, %Y")
 
     if not articles:
-        top = {"source": "", "title": "No headlines available today", "description": ""}
+        top = {"source": "", "title": "No headlines available today", "description": "", "link": ""}
         rest = []
     else:
         top = articles[0]
@@ -362,6 +378,7 @@ def build_news_html():
 {rest_html}    </div>"""
 
     source_label = top["source"] if top["source"] else "Wire"
+    badge_label = "Local News" if top.get("link") and is_local_article(top) else "Top Story"
 
     html_out = f"""<!DOCTYPE html>
 <html>
@@ -417,7 +434,7 @@ def build_news_html():
       <div class="date">{today}</div>
     </div>
 
-    <div class="badge">Top Story</div>
+    <div class="badge">{badge_label}</div>
 
     <div class="headline">{top["title"]}</div>
 
@@ -435,13 +452,38 @@ def build_news_html():
 </html>"""
     return html_out
 
+def build_news_caption(articles):
+    if not articles:
+        return "No headlines available today."
+
+    top = articles[0]
+    rest = articles[1:5]
+
+    lines = [f"📰 {top['title']}"]
+    if top.get("link"):
+        lines.append(top["link"])
+
+    if rest:
+        lines.append("")
+        lines.append("Also:")
+        for a in rest:
+            lines.append(f"• {a['title']}")
+            if a.get("link"):
+                lines.append(a["link"])
+
+    caption = "\n".join(lines)
+    return caption[:1024]
+
 def build_news_image():
-    html_out = build_news_html()
-    return render_html_to_png(html_out)
+    articles = gather_news()
+    html_out = build_news_html(articles)
+    buffer = render_html_to_png(html_out)
+    caption = build_news_caption(articles)
+    return buffer, caption
 
 # ---------- Telegram ----------
 
-def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="image/jpeg"):
+def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="image/jpeg", caption=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
     keyboard = {
         "inline_keyboard": [[
@@ -454,6 +496,8 @@ def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="im
         "chat_id": CHAT_ID,
         "reply_markup": json.dumps(keyboard)
     }
+    if caption:
+        data["caption"] = caption
     response = requests.post(url, files=files, data=data)
     return response.json()
 
@@ -468,6 +512,6 @@ if __name__ == "__main__":
     print("Sent currency/gold post")
     time.sleep(2)
 
-    news_img = build_news_image()
-    send_photo_for_approval(news_img, "news", filename="update.png", mime="image/png")
+    news_img, news_caption = build_news_image()
+    send_photo_for_approval(news_img, "news", filename="update.png", mime="image/png", caption=news_caption)
     print("Sent news post")
