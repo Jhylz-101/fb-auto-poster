@@ -390,7 +390,7 @@ def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="im
 if __name__ == "__main__":
     weather_img = build_weather_image()
     send_photo_for_approval(weather_img, "weather", filename="update.png", mime="image/png")
-    print("Sent weather post") 
+    print("Sent weather post")
     time.sleep(2)
 
     currency_img = build_currency_gold_image()
