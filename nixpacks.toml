@@ -1,11 +1,5 @@
-[variables]
-PLAYWRIGHT_BROWSERS_PATH = "/app/.playwright-browsers"
-
 [phases.setup]
 nixPkgs = ["chromium"]
 
 [phases.install]
-cmds = [
-  "pip install -r requirements.txt",
-  "playwright install --with-deps chromium"
-]
+cmds = ["pip install -r requirements.txt"]
