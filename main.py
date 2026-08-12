@@ -3,6 +3,7 @@ import time
 import json
 import random
 import re
+import os
 import html as html_lib
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw, ImageFont
@@ -50,18 +51,54 @@ def get_weather_line(data, city):
 
 # ---------- Forex / Gold ----------
 
-def get_forex():
+def get_forex_rate():
     url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/latest/USD"
     data = requests.get(url).json()
-    rate = data["conversion_rates"]["PHP"]
-    return f"USD to PHP: {rate:.2f}"
+    return data["conversion_rates"]["PHP"]
 
-def get_gold():
+def get_gold_price():
     url = "https://www.goldapi.io/api/XAU/PHP"
     headers = {"x-access-token": GOLD_API_KEY}
     data = requests.get(url, headers=headers).json()
-    price_per_gram = data["price_gram_24k"]
-    return f"PHP {price_per_gram:,.2f}/gram (24k pure gold)"
+    return data["price_gram_24k"]
+
+PRICE_HISTORY_FILE = "/data/price_history.json"
+
+def load_previous_prices():
+    if os.path.exists(PRICE_HISTORY_FILE):
+        try:
+            with open(PRICE_HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_current_prices(usd_rate, gold_price):
+    try:
+        os.makedirs(os.path.dirname(PRICE_HISTORY_FILE), exist_ok=True)
+        with open(PRICE_HISTORY_FILE, "w") as f:
+            json.dump({
+                "usd_rate": usd_rate,
+                "gold_price": gold_price,
+                "date": datetime.now().strftime("%Y-%m-%d")
+            }, f)
+    except Exception as e:
+        print(f"  [price history] could not save: {e}")
+
+def compute_trend(current, previous, flat_threshold_pct=0.05):
+    if previous is None:
+        return {"direction": "flat", "color": "#9a9a9a", "arrow": "•", "pct": None, "label": "No previous data"}
+    if previous == 0:
+        return {"direction": "flat", "color": "#9a9a9a", "arrow": "•", "pct": None, "label": "No previous data"}
+
+    pct_change = ((current - previous) / previous) * 100
+
+    if pct_change > flat_threshold_pct:
+        return {"direction": "up", "color": "#4caf50", "arrow": "▲", "pct": pct_change, "label": "Up from yesterday"}
+    elif pct_change < -flat_threshold_pct:
+        return {"direction": "down", "color": "#e05252", "arrow": "▼", "pct": pct_change, "label": "Down from yesterday"}
+    else:
+        return {"direction": "flat", "color": "#e0c14c", "arrow": "→", "pct": pct_change, "label": "Steady vs yesterday"}
 
 # ---------- News ----------
 
@@ -338,49 +375,137 @@ def build_weather_html():
   </div>
 </body>
 </html>"""
-    return html
+    return html, para1, para2, rainy
+
+def build_weather_caption(para1, para2):
+    return f"{para1}\n\n{para2}"
 
 def build_weather_image():
-    html = build_weather_html()
-    return render_html_to_png(html)
+    html, para1, para2, rainy = build_weather_html()
+    buffer = render_html_to_png(html)
+    caption = build_weather_caption(para1, para2)
+    return buffer, caption
 
-# ---------- Currency & Gold (Pillow, unchanged) ----------
+# ---------- Currency & Gold (HTML/Playwright card design) ----------
+
+def build_currency_gold_html():
+    usd_rate = get_forex_rate()
+    gold_price = get_gold_price()
+    today = datetime.now().strftime("%B %d, %Y")
+
+    previous = load_previous_prices()
+    usd_trend = compute_trend(usd_rate, previous.get("usd_rate"))
+    gold_trend = compute_trend(gold_price, previous.get("gold_price"))
+
+    def trend_badge(trend):
+        if trend["pct"] is None:
+            return f'<span class="trend" style="color:{trend["color"]}">{trend["arrow"]}</span>'
+        return f'<span class="trend" style="color:{trend["color"]}">{trend["arrow"]} {abs(trend["pct"]):.2f}%</span>'
+
+    html_out = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;900&family=Archivo:wght@400;500;600;700&display=swap');
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#122019; position:relative; overflow:hidden; }}
+
+  .bg {{
+    position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 85% 8%, rgba(212,175,55,0.20), transparent 45%),
+      radial-gradient(circle at 5% 95%, rgba(212,175,55,0.10), transparent 40%),
+      linear-gradient(160deg, #0e1b15 0%, #16281f 60%, #1c3226 100%);
+  }}
+  .ring {{ position:absolute; border-radius:50%; border:1px solid rgba(212,175,55,0.18); }}
+  .r1 {{ width:900px; height:900px; top:-260px; right:-320px; }}
+  .r2 {{ width:600px; height:600px; bottom:-200px; left:-200px; }}
+
+  .content {{ position:relative; z-index:2; padding:76px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+
+  .eyebrow {{ color:#c9a94f; font-size:22px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Fraunces',serif; font-weight:900; color:#f7f2e3; font-size:66px; line-height:1.05; margin-top:14px; }}
+  .date {{ color:#a9c2b3; font-size:24px; margin-top:14px; font-weight:500; }}
+
+  .cards {{ margin-top:56px; display:flex; flex-direction:column; gap:28px; }}
+  .card {{
+    background:rgba(247,242,227,0.04); border:1px solid rgba(212,175,55,0.35);
+    border-radius:22px; padding:40px 42px; display:flex; justify-content:space-between; align-items:center;
+  }}
+  .card .label {{ color:#cfead9; font-size:26px; font-weight:600; letter-spacing:1px; }}
+  .card .sub {{ color:#8fae9d; font-size:19px; margin-top:8px; }}
+  .card .valuewrap {{ text-align:right; }}
+  .card .value {{ font-family:'Fraunces',serif; font-weight:700; color:#e9c25f; font-size:52px; }}
+  .card .trend {{ display:block; font-size:20px; font-weight:700; margin-top:6px; }}
+
+  .note {{ margin-top:40px; color:#a9c2b3; font-size:22px; line-height:1.5; }}
+  .note b {{ color:#e9c25f; }}
+
+  .footer {{ margin-top:60px; display:flex; justify-content:space-between; align-items:flex-end; }}
+  .brand {{ color:#7d9689; font-size:22px; font-weight:700; letter-spacing:2px; }}
+  .tag {{ color:#e9c25f; font-size:20px; font-weight:600; }}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="ring r1"></div>
+  <div class="ring r2"></div>
+  <div class="content">
+    <div class="eyebrow">Benguet Daily Update</div>
+    <div class="title">Money &amp; Markets</div>
+    <div class="date">{today}</div>
+
+    <div class="cards">
+      <div class="card">
+        <div>
+          <div class="label">US Dollar → Peso</div>
+          <div class="sub">Mid-market reference rate</div>
+        </div>
+        <div class="valuewrap">
+          <div class="value">₱{usd_rate:.2f}</div>
+          {trend_badge(usd_trend)}
+        </div>
+      </div>
+
+      <div class="card">
+        <div>
+          <div class="label">Gold, 24K</div>
+          <div class="sub">Price per gram, world spot rate in PHP</div>
+        </div>
+        <div class="valuewrap">
+          <div class="value">₱{gold_price:,.0f}</div>
+          {trend_badge(gold_trend)}
+        </div>
+      </div>
+    </div>
+
+    <div class="note">Rates move throughout the day — treat these as a <b>daily snapshot</b>, not a live quote, before making any big purchase or exchange.</div>
+
+    <div class="footer">
+      <div class="brand">BENGUET DAILY UPDATE</div>
+      <div class="tag">Currency &amp; Gold</div>
+    </div>
+  </div>
+</body>
+</html>"""
+    return html_out, usd_rate, gold_price, usd_trend, gold_trend
+
+def build_currency_gold_caption(usd_rate, gold_price, usd_trend, gold_trend):
+    lines = [
+        f"💰 USD/PHP: ₱{usd_rate:.2f} ({usd_trend['label']})",
+        f"🪙 Gold 24K: ₱{gold_price:,.0f}/gram ({gold_trend['label']})",
+        "",
+        "Daily snapshot — rates shift through the day, double check before any big transaction."
+    ]
+    return "\n".join(lines)
 
 def build_currency_gold_image():
-    prompt = "elegant financial district skyline, gold bars and coins, professional business aesthetic, formal, minimalist"
-    img = generate_background(prompt)
-    overlay = Image.new("RGBA", img.size, (10, 15, 30, 90))
-    img = Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB")
-    draw = ImageDraw.Draw(img, "RGBA")
-    width, height = img.size
-
-    badge_font = get_font(30)
-    text_font = get_font(24)
-    small_font = get_font(20)
-    huge_title_font = get_font(55)
-
-    draw_title(draw, huge_title_font, width, "CURRENCY & GOLD")
-    y = 200
-
-    y = section_badge(draw, badge_font, MARGIN, y, "CURRENCY", ACCENT_GREEN)
-    y += 30
-    draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GREEN)
-    draw.text((MARGIN + 18, y), get_forex(), font=text_font, fill=WHITE)
-    y += 70
-
-    y = section_badge(draw, badge_font, MARGIN, y, "GOLD", ACCENT_GOLD)
-    y += 30
-    draw.ellipse([(MARGIN, y + 8), (MARGIN + 9, y + 17)], fill=ACCENT_GOLD)
-    draw.text((MARGIN + 18, y), get_gold(), font=text_font, fill=WHITE)
-
-    today = datetime.now().strftime("%B %d, %Y")
-    draw.rectangle([(0, height - 60), (width, height)], fill=(0, 0, 0, 180))
-    draw.text((MARGIN, height - 45), today, font=small_font, fill=WHITE)
-
-    buffer = BytesIO()
-    img.save(buffer, format="JPEG")
-    buffer.seek(0)
-    return buffer
+    html_out, usd_rate, gold_price, usd_trend, gold_trend = build_currency_gold_html()
+    buffer = render_html_to_png(html_out)
+    caption = build_currency_gold_caption(usd_rate, gold_price, usd_trend, gold_trend)
+    save_current_prices(usd_rate, gold_price)
+    return buffer, caption
 
 # ---------- News (HTML/Playwright narrative-style) ----------
 
@@ -389,6 +514,54 @@ def truncate_text(text, max_len=340):
     if len(text) <= max_len:
         return text
     return text[:max_len].rsplit(" ", 1)[0] + "…"
+
+def compute_news_layout(title, description_len, rest_count):
+    """Scale down font sizes/spacing as content grows, so everything fits
+    the fixed 1080x1350 canvas without overflowing."""
+    scale = 1.0
+
+    title_len = len(title)
+    if title_len > 100:
+        scale -= 0.14
+    elif title_len > 70:
+        scale -= 0.07
+
+    if description_len > 320:
+        scale -= 0.12
+    elif description_len > 220:
+        scale -= 0.06
+
+    if rest_count >= 4:
+        scale -= 0.10
+    elif rest_count == 3:
+        scale -= 0.05
+    elif rest_count == 2:
+        scale -= 0.02
+
+    scale = max(0.70, min(1.0, scale))
+
+    return {
+        "scale": scale,
+        "headline_size": round(52 * scale),
+        "lede_size": round(25 * scale),
+        "lede_max_len": round(340 * (1.0 if rest_count == 0 else max(0.55, 1.0 - rest_count * 0.12))),
+        "item_text_size": round(19 * scale),
+        "item_src_size": round(15 * scale),
+        "also_label_size": round(16 * scale),
+        "badge_size": round(22 * scale),
+        "date_size": round(20 * scale),
+        "brand_size": round(22 * scale),
+        "footer_size": round(18 * scale),
+        "topbar_pad": round(44 * scale),
+        "badge_margin": round(32 * scale),
+        "headline_pad": round(24 * scale),
+        "rule_margin": round(32 * scale),
+        "lede_pad": round(30 * scale),
+        "also_margin": round(36 * scale),
+        "also_pad": round(28 * scale),
+        "item_gap": round(14 * scale),
+        "footer_pad": round(32 * scale),
+    }
 
 def build_news_html(articles):
     today = datetime.now().strftime("%B %d, %Y")
@@ -400,7 +573,8 @@ def build_news_html(articles):
         top = articles[0]
         rest = articles[1:5]
 
-    lede_text = truncate_text(top["description"]) if top["description"] else "Full details available from the source below."
+    layout = compute_news_layout(top["title"], len(top["description"]), len(rest))
+    lede_text = truncate_text(top["description"], max_len=layout["lede_max_len"]) if top["description"] else "Full details available from the source below."
 
     rest_html = ""
     for a in rest:
@@ -430,35 +604,35 @@ def build_news_html(articles):
 
   .content {{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; }}
 
-  .topbar {{ display:flex; justify-content:space-between; align-items:center; padding:44px 70px 0; }}
-  .brand {{ color:#b02e26; font-size:22px; font-weight:800; letter-spacing:3px; }}
-  .date {{ color:#9a9a9a; font-size:20px; font-weight:500; }}
+  .topbar {{ display:flex; justify-content:space-between; align-items:center; padding:{layout["topbar_pad"]}px 70px 0; }}
+  .brand {{ color:#b02e26; font-size:{layout["brand_size"]}px; font-weight:800; letter-spacing:3px; }}
+  .date {{ color:#9a9a9a; font-size:{layout["date_size"]}px; font-weight:500; }}
 
   .badge {{
-    margin:32px 70px 0; align-self:flex-start;
-    background:#b02e26; color:#fff; font-weight:800; font-size:22px; letter-spacing:3px;
+    margin:{layout["badge_margin"]}px 70px 0; align-self:flex-start;
+    background:#b02e26; color:#fff; font-weight:800; font-size:{layout["badge_size"]}px; letter-spacing:3px;
     padding:11px 24px; text-transform:uppercase;
   }}
 
   .headline {{
-    font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:52px; line-height:1.1;
-    padding:24px 70px 0; text-transform:none;
+    font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:{layout["headline_size"]}px; line-height:1.1;
+    padding:{layout["headline_pad"]}px 70px 0; text-transform:none;
   }}
 
-  .rule {{ height:2px; background:#3a3a3a; margin:32px 70px 0; }}
+  .rule {{ height:2px; background:#3a3a3a; margin:{layout["rule_margin"]}px 70px 0; }}
 
-  .lede {{ color:#e3ded3; font-size:25px; line-height:1.55; padding:30px 70px 0; font-weight:400; }}
+  .lede {{ color:#e3ded3; font-size:{layout["lede_size"]}px; line-height:1.5; padding:{layout["lede_pad"]}px 70px 0; font-weight:400; }}
 
-  .also {{ margin:36px 70px 0; border-top:1px solid #3a3a3a; padding-top:28px; }}
-  .also-label {{ color:#8a8a8a; font-size:16px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:16px; }}
-  .item {{ display:flex; align-items:flex-start; gap:12px; margin-top:14px; }}
+  .also {{ margin:{layout["also_margin"]}px 70px 0; border-top:1px solid #3a3a3a; padding-top:{layout["also_pad"]}px; }}
+  .also-label {{ color:#8a8a8a; font-size:{layout["also_label_size"]}px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:16px; }}
+  .item {{ display:flex; align-items:flex-start; gap:12px; margin-top:{layout["item_gap"]}px; }}
   .item .dot {{ width:7px; height:7px; border-radius:50%; background:#b02e26; flex-shrink:0; margin-top:9px; }}
-  .item .itext {{ color:#d8d2c6; font-size:19px; line-height:1.4; flex:1; }}
-  .item .src {{ color:#8a8a8a; font-size:15px; white-space:nowrap; margin-top:2px; }}
+  .item .itext {{ color:#d8d2c6; font-size:{layout["item_text_size"]}px; line-height:1.4; flex:1; }}
+  .item .src {{ color:#8a8a8a; font-size:{layout["item_src_size"]}px; white-space:nowrap; margin-top:2px; }}
 
-  .footer {{ margin-top:auto; display:flex; justify-content:space-between; align-items:center; padding:32px 70px 42px; border-top:1px solid #3a3a3a; }}
-  .source {{ color:#8a8a8a; font-size:18px; }}
-  .cta {{ color:#f0a97a; font-size:18px; font-weight:700; }}
+  .footer {{ margin-top:auto; display:flex; justify-content:space-between; align-items:center; padding:{layout["footer_pad"]}px 70px 42px; border-top:1px solid #3a3a3a; }}
+  .source {{ color:#8a8a8a; font-size:{layout["footer_size"]}px; }}
+  .cta {{ color:#f0a97a; font-size:{layout["footer_size"]}px; font-weight:700; }}
 </style>
 </head>
 <body>
@@ -538,13 +712,13 @@ def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="im
     return response.json()
 
 if __name__ == "__main__":
-    weather_img = build_weather_image()
-    send_photo_for_approval(weather_img, "weather", filename="update.png", mime="image/png")
+    weather_img, weather_caption = build_weather_image()
+    send_photo_for_approval(weather_img, "weather", filename="update.png", mime="image/png", caption=weather_caption)
     print("Sent weather post")
     time.sleep(2)
 
-    currency_img = build_currency_gold_image()
-    send_photo_for_approval(currency_img, "currency")
+    currency_img, currency_caption = build_currency_gold_image()
+    send_photo_for_approval(currency_img, "currency", filename="update.png", mime="image/png", caption=currency_caption)
     print("Sent currency/gold post")
     time.sleep(2)
 
