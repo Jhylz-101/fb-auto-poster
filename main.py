@@ -7,10 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
 from datetime import datetime
 from collections import Counter
-import shutil
 from playwright.sync_api import sync_playwright
-
-CHROMIUM_PATH = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
 
 BOT_TOKEN = "8919908599:AAGTBdy69N5NFXY5KTIMhTkO7q2VpOXwYa8"
 CHAT_ID = "7898015877"
@@ -156,10 +153,8 @@ def draw_title(draw, huge_title_font, width, title_text):
 # ---------- HTML rendering (used by weather post) ----------
 
 def render_html_to_png(html, width=1080, height=1350):
-    if not CHROMIUM_PATH:
-        raise RuntimeError("Chromium not found on system PATH. Check that nixPkgs = [\"chromium\"] is set in nixpacks.toml.")
     with sync_playwright() as p:
-        browser = p.chromium.launch(executable_path=CHROMIUM_PATH)
+        browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": width, "height": height})
         page.set_content(html, wait_until="networkidle")
         page.wait_for_timeout(300)
