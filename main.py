@@ -22,7 +22,10 @@ CITIES = ["Baguio", "La Trinidad", "Atok", "Bakun", "Bokod", "Buguias", "Itogon"
 NEWS_SOURCES = {
     "Rappler": "https://www.rappler.com/feed/",
     "Inquirer": "https://www.inquirer.net/fullfeed",
-    "PhilStar": "https://www.philstar.com/rss/headlines"
+    "PhilStar": "https://www.philstar.com/rss/headlines",
+    "PNA": "https://syndication.pna.gov.ph/rss",
+    "NorDis": "https://nordis.net/feed/",
+    "GMA News": "https://data.gmanews.tv/gno/rss/news/feed.xml"
 }
 
 CONNECTORS = ["Meanwhile, ", "In other news, ", "Elsewhere, ", "Also making headlines: "]
@@ -94,11 +97,23 @@ def is_local_article(article):
     text = (article["title"] + " " + article["description"]).lower()
     return any(keyword in text for keyword in LOCAL_KEYWORDS)
 
+EXCLUDE_UNLESS_LOCAL = [
+    "walang pasok", "class suspension", "suspension of classes",
+    "no classes", "classes suspended"
+]
+
+def is_excluded_article(article):
+    text = (article["title"] + " " + article["description"]).lower()
+    matches_exclude = any(keyword in text for keyword in EXCLUDE_UNLESS_LOCAL)
+    return matches_exclude and not is_local_article(article)
+
 def gather_news():
     all_articles = []
     for name, url in NEWS_SOURCES.items():
         for article in get_articles_from_feed(url, limit=6):
             all_articles.append({"source": name, **article})
+
+    all_articles = [a for a in all_articles if not is_excluded_article(a)]
 
     local_articles = [a for a in all_articles if is_local_article(a)]
     other_articles = [a for a in all_articles if not is_local_article(a)]
