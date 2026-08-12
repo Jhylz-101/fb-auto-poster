@@ -78,7 +78,7 @@ def get_articles_from_feed(feed_url, limit=6):
         root = ET.fromstring(response.content)
         items = root.findall(".//item")[:limit]
         articles = []
-        for item in items:
+        for position, item in enumerate(items):
             title_el = item.find("title")
             desc_el = item.find("description")
             link_el = item.find("link")
@@ -88,7 +88,7 @@ def get_articles_from_feed(feed_url, limit=6):
             desc = html_lib.unescape(desc).strip()
             link = link_el.text.strip() if link_el is not None and link_el.text else ""
             if title:
-                articles.append({"title": title.strip(), "description": desc, "link": link})
+                articles.append({"title": title.strip(), "description": desc, "link": link, "position": position})
         return articles
     except Exception:
         return []
@@ -107,6 +107,14 @@ def is_excluded_article(article):
     matches_exclude = any(keyword in text for keyword in EXCLUDE_UNLESS_LOCAL)
     return matches_exclude and not is_local_article(article)
 
+SOURCE_PRIORITY = ["Inquirer", "PhilStar", "GMA News", "NorDis", "PNA", "Rappler"]
+
+def source_rank(name):
+    try:
+        return SOURCE_PRIORITY.index(name)
+    except ValueError:
+        return len(SOURCE_PRIORITY)
+
 def gather_news():
     all_articles = []
     for name, url in NEWS_SOURCES.items():
@@ -115,10 +123,13 @@ def gather_news():
 
     all_articles = [a for a in all_articles if not is_excluded_article(a)]
 
-    local_articles = [a for a in all_articles if is_local_article(a)]
-    other_articles = [a for a in all_articles if not is_local_article(a)]
+    all_articles.sort(key=lambda a: (
+        0 if is_local_article(a) else 1,
+        source_rank(a["source"]),
+        a["position"]
+    ))
 
-    return local_articles + other_articles
+    return all_articles
 
 # ---------- Shared image helpers (Pillow, used by currency/gold + news) ----------
 
