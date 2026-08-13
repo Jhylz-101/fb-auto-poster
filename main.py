@@ -1403,6 +1403,11 @@ ROAD_STATUS_STYLES = {
     "passable": {"label": "PASSABLE", "color": "#4caf50"},
 }
 
+REASON_KEYWORDS = [
+    "road slip", "landslide", "rockslide", "mudflow", "heavy rainfall",
+    "heavy rain", "flooding", "erosion", "debris", "continuous heavy rainfall"
+]
+
 def classify_road_status_text(window_text):
     t = window_text.lower()
     if any(k in t for k in ["not passable", "impassable", "closed", "no entry"]):
@@ -1411,6 +1416,13 @@ def classify_road_status_text(window_text):
         return "one_lane"
     if any(k in t for k in ["passable", "open", "cleared"]):
         return "passable"
+    return None
+
+def extract_reason(window_text):
+    t = window_text.lower()
+    for keyword in REASON_KEYWORDS:
+        if keyword in t:
+            return keyword
     return None
 
 def extract_road_statuses(text):
@@ -1429,8 +1441,45 @@ def extract_road_statuses(text):
         window = text[idx:end]
         status = classify_road_status_text(window)
         if status:
-            results[road] = status
+            results[road] = {
+                "status": status,
+                "reason": extract_reason(window)
+            }
     return results
+
+REASON_PHRASES = {
+    "road slip": "a road slip",
+    "landslide": "a landslide",
+    "rockslide": "a rockslide",
+    "mudflow": "a mudflow",
+    "heavy rainfall": "heavy rainfall",
+    "heavy rain": "heavy rain",
+    "flooding": "flooding",
+    "erosion": "erosion",
+    "debris": "debris on the road",
+    "continuous heavy rainfall": "continuous heavy rainfall"
+}
+
+STATUS_PHRASES = {
+    "closed": "currently closed to travel",
+    "one_lane": "open but limited to one-lane traffic",
+    "passable": "fully passable"
+}
+
+def build_road_narrative(statuses):
+    """Builds narrative sentences from extracted facts (road, status, reason)
+    in our own wording — not copied from the source article."""
+    if not statuses:
+        return ""
+
+    sentences = []
+    for road, info in statuses.items():
+        status_phrase = STATUS_PHRASES.get(info["status"], "affected by current conditions")
+        reason = info.get("reason")
+        reason_phrase = f", due to {REASON_PHRASES.get(reason, reason)}" if reason else ""
+        sentences.append(f"{road} is {status_phrase}{reason_phrase}.")
+
+    return " ".join(sentences)
 
 def find_road_article():
     for name, url in ROAD_SOURCES.items():
@@ -1461,18 +1510,18 @@ def save_road_state(state):
     except Exception as e:
         print(f"  [road state] could not save: {e}")
 
-def get_road_status():
+def get_road_status(report_is_new=False):
     state = load_road_state()
     stored_current = state.get("current")
 
     article = find_road_article()
     if article is None:
         print("  [road scan] no road advisory article found this run")
-        return stored_current
+        return (stored_current, False) if report_is_new else stored_current
 
     if article.get("link") and article["link"] == (stored_current or {}).get("link"):
         print("  [road state] same article as before, reusing status")
-        return stored_current
+        return (stored_current, False) if report_is_new else stored_current
 
     full_text = article["description"]
     if article.get("link"):
@@ -1483,7 +1532,7 @@ def get_road_status():
     statuses = extract_road_statuses(full_text)
     if not statuses:
         print("  [road scan] article found but no per-road status could be extracted")
-        return stored_current
+        return (stored_current, False) if report_is_new else stored_current
 
     print(f"  [road scan] extracted statuses: {statuses}")
     new_current = {
@@ -1496,28 +1545,27 @@ def get_road_status():
         state["previous"] = stored_current
     state["current"] = new_current
     save_road_state(state)
-    return new_current
+    return (new_current, True) if report_is_new else new_current
 
-def build_road_html():
-    status = get_road_status()
+def build_road_html(status=None):
+    if status is None:
+        status = get_road_status()
     today = datetime.now().strftime("%B %d, %Y")
 
     if not status or not status.get("statuses"):
         rows_html = ""
-        source_label = ""
-        link = ""
+        narrative = "No road advisory available yet — this updates automatically once fresh coverage is published."
         subhead = "No road advisory available yet"
     else:
         rows_html = ""
-        for road, road_status in status["statuses"].items():
-            style = ROAD_STATUS_STYLES.get(road_status, ROAD_STATUS_STYLES["passable"])
+        for road, info in status["statuses"].items():
+            style = ROAD_STATUS_STYLES.get(info["status"], ROAD_STATUS_STYLES["passable"])
             rows_html += f"""
       <div class="row">
         <div class="roadname">{road}</div>
         <div class="statuspill" style="background:{style['color']}22; color:{style['color']}; border:1px solid {style['color']}66;">{style['label']}</div>
       </div>"""
-        source_label = status.get("source", "")
-        link = status.get("link", "")
+        narrative = build_road_narrative(status["statuses"])
         found_date = status.get("found_date", "")
         subhead = f"As of {found_date}" if found_date else "Latest road advisory"
 
@@ -1539,18 +1587,23 @@ def build_road_html():
   .date {{ color:#a9b2ba; font-size:22px; margin-top:14px; font-weight:500; }}
   .subhead {{ color:#c9d2d9; font-size:22px; margin-top:20px; }}
 
-  .rows {{ margin-top:40px; display:flex; flex-direction:column; gap:20px; }}
+  .narrative {{
+    margin-top:30px; background:rgba(247,242,227,0.04); border:1px solid rgba(247,242,227,0.14);
+    border-radius:16px; padding:28px 32px; color:#d8dee3; font-size:21px; line-height:1.55;
+  }}
+
+  .rows {{ margin-top:30px; display:flex; flex-direction:column; gap:18px; }}
   .row {{
     display:flex; align-items:center; justify-content:space-between; gap:20px;
     background:rgba(247,242,227,0.04); border:1px solid rgba(247,242,227,0.14);
-    border-radius:16px; padding:28px 32px;
+    border-radius:16px; padding:26px 30px;
   }}
-  .roadname {{ color:#eef2f5; font-size:26px; font-weight:700; }}
-  .statuspill {{ font-size:18px; font-weight:800; letter-spacing:1px; padding:10px 20px; border-radius:20px; white-space:nowrap; }}
+  .roadname {{ color:#eef2f5; font-size:24px; font-weight:700; }}
+  .statuspill {{ font-size:17px; font-weight:800; letter-spacing:1px; padding:9px 18px; border-radius:20px; white-space:nowrap; }}
 
-  .note {{ margin-top:34px; color:#9aa4ab; font-size:18px; line-height:1.5; }}
+  .note {{ margin-top:30px; color:#9aa4ab; font-size:17px; line-height:1.5; }}
 
-  .footer {{ margin-top:auto; padding-top:36px; display:flex; justify-content:space-between; align-items:flex-end; }}
+  .footer {{ margin-top:auto; padding-top:32px; display:flex; justify-content:space-between; align-items:flex-end; }}
   .brand {{ color:#8a949c; font-size:20px; font-weight:700; letter-spacing:2px; }}
   .tag {{ color:#6fa8c9; font-size:18px; font-weight:600; }}
 </style>
@@ -1563,14 +1616,16 @@ def build_road_html():
     <div class="date">{today}</div>
     <div class="subhead">{subhead}</div>
 
+    <div class="narrative">{narrative}</div>
+
     <div class="rows">{rows_html}
     </div>
 
-    <div class="note">Reflects the latest DPWH-CAR advisory via BaguioCityGuide — conditions may change with weather.</div>
+    <div class="note">Reflects the latest DPWH-CAR advisory — conditions may change with weather.</div>
 
     <div class="footer">
       <div class="brand">BENGUET DAILY UPDATE</div>
-      <div class="tag">Source: {source_label if source_label else "—"}</div>
+      <div class="tag">Road Status Watch</div>
     </div>
   </div>
 </body>
@@ -1581,12 +1636,7 @@ def build_road_caption(status):
     if not status or not status.get("statuses"):
         return "🛣️ No road advisory available yet — check back later."
 
-    lines = ["🛣️ Road status update:"]
-    for road, road_status in status["statuses"].items():
-        label = ROAD_STATUS_STYLES.get(road_status, ROAD_STATUS_STYLES["passable"])["label"]
-        lines.append(f"{road}: {label}")
-    if status.get("link"):
-        lines.append(status["link"])
+    lines = ["🛣️ Road status update:", build_road_narrative(status["statuses"])]
     return "\n".join(lines)
 
 def build_road_image():
