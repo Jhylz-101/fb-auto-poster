@@ -1572,10 +1572,10 @@ def get_road_status(report_is_new=False):
         print("  [road scan] no road advisory article found this run")
         return (stored_current, False) if report_is_new else stored_current
 
-    if article.get("link") and article["link"] == (stored_current or {}).get("link"):
-        print("  [road state] same article as before, reusing status")
-        return (stored_current, False) if report_is_new else stored_current
-
+    # Always re-extract fresh, even if we've seen this exact article before —
+    # our extraction logic can improve over time, and stale cached results
+    # from an older, buggier version shouldn't get stuck forever just
+    # because the link didn't change.
     full_text = article["description"]
     if article.get("link"):
         fetched = fetch_full_article_text(article["link"])
@@ -1587,7 +1587,18 @@ def get_road_status(report_is_new=False):
         print("  [road scan] article found but no per-road status could be extracted")
         return (stored_current, False) if report_is_new else stored_current
 
-    print(f"  [road scan] extracted statuses: {statuses}")
+    same_link = article.get("link") and article["link"] == (stored_current or {}).get("link")
+    same_statuses = statuses == (stored_current or {}).get("statuses")
+
+    if same_link and same_statuses:
+        print("  [road state] same article, same extracted statuses — no update needed")
+        return (stored_current, False) if report_is_new else stored_current
+
+    if same_link and not same_statuses:
+        print(f"  [road state] same article but re-extraction produced different results (extraction logic likely improved) — updating: {statuses}")
+    else:
+        print(f"  [road scan] new article, extracted statuses: {statuses}")
+
     new_current = {
         "statuses": statuses,
         "source": article.get("source", "BaguioCityGuide"),
