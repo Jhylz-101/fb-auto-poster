@@ -1541,31 +1541,41 @@ def process_telegram_approvals():
         data = callback.get("data", "")
         callback_id = callback["id"]
 
-        if data.startswith("approve_"):
-            label = data[len("approve_"):]
-            pending = load_pending_post(label)
-            if not pending:
-                print(f"  [approvals] approve for '{label}' but no pending post found (already handled or expired)")
-                answer_callback_query(callback_id, "Already handled or expired")
-                continue
+        try:
+            if data.startswith("approve_"):
+                label = data[len("approve_"):]
+                pending = load_pending_post(label)
+                if not pending:
+                    print(f"  [approvals] approve for '{label}' but no pending post found (already handled or expired)")
+                    answer_callback_query(callback_id, "Already handled or expired")
+                    continue
 
-            print(f"  [approvals] approving '{label}' — posting to Facebook")
-            result = post_to_facebook(pending["image_bytes"], pending["caption"])
-            if result.get("id") or result.get("post_id"):
-                print(f"  [approvals] '{label}' posted to Facebook successfully: {result}")
-                answer_callback_query(callback_id, "Posted to Facebook!")
-                send_text_message(f"✅ '{label}' approved and posted to Facebook.")
-            else:
-                print(f"  [approvals] '{label}' Facebook post FAILED: {result}")
-                answer_callback_query(callback_id, "Facebook post failed — check logs")
-                send_text_message(f"⚠️ '{label}' approved but Facebook post failed: {result.get('error', {}).get('message', result)}")
-            clear_pending_post(label)
+                print(f"  [approvals] approving '{label}' — posting to Facebook")
+                result = post_to_facebook(pending["image_bytes"], pending["caption"])
+                if result.get("id") or result.get("post_id"):
+                    print(f"  [approvals] '{label}' posted to Facebook successfully: {result}")
+                    answer_callback_query(callback_id, "Posted to Facebook!")
+                    send_text_message(f"✅ '{label}' approved and posted to Facebook.")
+                else:
+                    print(f"  [approvals] '{label}' Facebook post FAILED: {result}")
+                    answer_callback_query(callback_id, "Facebook post failed — check logs")
+                    error_info = result.get("error", result)
+                    if isinstance(error_info, dict):
+                        error_text = error_info.get("message", str(error_info))
+                    else:
+                        error_text = str(error_info)
+                    send_text_message(f"⚠️ '{label}' approved but Facebook post failed: {error_text}")
+                clear_pending_post(label)
 
-        elif data.startswith("reject_"):
-            label = data[len("reject_"):]
-            print(f"  [approvals] '{label}' rejected, discarding")
-            answer_callback_query(callback_id, "Rejected — discarded")
-            clear_pending_post(label)
+            elif data.startswith("reject_"):
+                label = data[len("reject_"):]
+                print(f"  [approvals] '{label}' rejected, discarding")
+                answer_callback_query(callback_id, "Rejected — discarded")
+                clear_pending_post(label)
+        except Exception as e:
+            # Never let a single bad update block the offset from advancing —
+            # otherwise this update gets retried forever on every future run.
+            print(f"  [approvals] error handling update {update['update_id']}: {e}")
 
     if latest_update_id:
         save_telegram_offset(latest_update_id)
