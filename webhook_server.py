@@ -69,6 +69,22 @@ def health():
     return "OK — webhook server is running"
 
 
+@app.route("/debug-config", methods=["GET"])
+def debug_config():
+    """Shows a masked view of the currently-loaded FB credentials in this
+    running process, to confirm they actually match what was pasted into
+    Railway (since this is a long-running server, not a fresh script run,
+    it's possible for it to be holding stale values in memory)."""
+    from main import FB_PAGE_ACCESS_TOKEN, FB_PAGE_ID
+    token = FB_PAGE_ACCESS_TOKEN or ""
+    masked_token = f"{token[:12]}...{token[-8:]}" if len(token) > 20 else "(empty or too short)"
+    return jsonify({
+        "FB_PAGE_ID": FB_PAGE_ID,
+        "FB_PAGE_ACCESS_TOKEN_masked": masked_token,
+        "FB_PAGE_ACCESS_TOKEN_length": len(token)
+    })
+
+
 @app.route("/register-webhook", methods=["GET"])
 def register_webhook():
     """Visit this URL once (in a browser) after deploying, to tell Telegram
