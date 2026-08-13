@@ -1376,6 +1376,225 @@ def seed_fuel_state_if_empty():
     }
     save_fuel_state(seed_state)
 
+# ---------- Road Status Watch (Kennon/Halsema/Marcos, via BaguioCityGuide) ----------
+
+ROAD_SOURCES = {
+    "BaguioCityGuide": "https://baguiocityguide.com/feed/"
+}
+
+TRACKED_ROADS = [
+    "Kennon Road", "Halsema Highway", "Marcos Highway",
+    "Benguet-Nueva Vizcaya Road", "Baguio-Bontoc Road", "Naguilian Road"
+]
+
+ROAD_TOPIC_KEYWORDS = [
+    "road condition", "road advisory", "passable", "not passable", "impassable",
+    "one lane", "one-lane", "road closure", "landslide", "rockslide", "road slip",
+    "mudflow", "dpwh"
+]
+
+def is_road_article(article):
+    text = (article["title"] + " " + article["description"]).lower()
+    return any(keyword in text for keyword in ROAD_TOPIC_KEYWORDS)
+
+ROAD_STATUS_STYLES = {
+    "closed": {"label": "CLOSED / NOT PASSABLE", "color": "#e05252"},
+    "one_lane": {"label": "ONE LANE PASSABLE", "color": "#e0c14c"},
+    "passable": {"label": "PASSABLE", "color": "#4caf50"},
+}
+
+def classify_road_status_text(window_text):
+    t = window_text.lower()
+    if any(k in t for k in ["not passable", "impassable", "closed", "no entry"]):
+        return "closed"
+    if any(k in t for k in ["one lane", "one-lane", "single lane"]):
+        return "one_lane"
+    if any(k in t for k in ["passable", "open", "cleared"]):
+        return "passable"
+    return None
+
+def extract_road_statuses(text):
+    results = {}
+    text_lower = text.lower()
+    positions = []
+    for road in TRACKED_ROADS:
+        idx = text_lower.find(road.lower())
+        if idx != -1:
+            positions.append((idx, road))
+    positions.sort()
+
+    for i, (idx, road) in enumerate(positions):
+        next_idx = positions[i + 1][0] if i + 1 < len(positions) else len(text)
+        end = min(idx + 260, next_idx, len(text))
+        window = text[idx:end]
+        status = classify_road_status_text(window)
+        if status:
+            results[road] = status
+    return results
+
+def find_road_article():
+    for name, url in ROAD_SOURCES.items():
+        articles = get_articles_from_feed(url, limit=20)
+        print(f"  [road scan] {name}: {len(articles)} articles fetched")
+        for article in articles:
+            if is_road_article(article):
+                article["source"] = name
+                return article
+    return None
+
+ROAD_STATE_FILE = "/data/road_state.json"
+
+def load_road_state():
+    if os.path.exists(ROAD_STATE_FILE):
+        try:
+            with open(ROAD_STATE_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_road_state(state):
+    try:
+        os.makedirs(os.path.dirname(ROAD_STATE_FILE), exist_ok=True)
+        with open(ROAD_STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except Exception as e:
+        print(f"  [road state] could not save: {e}")
+
+def get_road_status():
+    state = load_road_state()
+    stored_current = state.get("current")
+
+    article = find_road_article()
+    if article is None:
+        print("  [road scan] no road advisory article found this run")
+        return stored_current
+
+    if article.get("link") and article["link"] == (stored_current or {}).get("link"):
+        print("  [road state] same article as before, reusing status")
+        return stored_current
+
+    full_text = article["description"]
+    if article.get("link"):
+        fetched = fetch_full_article_text(article["link"])
+        if fetched:
+            full_text = fetched
+
+    statuses = extract_road_statuses(full_text)
+    if not statuses:
+        print("  [road scan] article found but no per-road status could be extracted")
+        return stored_current
+
+    print(f"  [road scan] extracted statuses: {statuses}")
+    new_current = {
+        "statuses": statuses,
+        "source": article.get("source", "BaguioCityGuide"),
+        "link": article.get("link", ""),
+        "found_date": datetime.now().strftime("%B %d, %Y")
+    }
+    if stored_current:
+        state["previous"] = stored_current
+    state["current"] = new_current
+    save_road_state(state)
+    return new_current
+
+def build_road_html():
+    status = get_road_status()
+    today = datetime.now().strftime("%B %d, %Y")
+
+    if not status or not status.get("statuses"):
+        rows_html = ""
+        source_label = ""
+        link = ""
+        subhead = "No road advisory available yet"
+    else:
+        rows_html = ""
+        for road, road_status in status["statuses"].items():
+            style = ROAD_STATUS_STYLES.get(road_status, ROAD_STATUS_STYLES["passable"])
+            rows_html += f"""
+      <div class="row">
+        <div class="roadname">{road}</div>
+        <div class="statuspill" style="background:{style['color']}22; color:{style['color']}; border:1px solid {style['color']}66;">{style['label']}</div>
+      </div>"""
+        source_label = status.get("source", "")
+        link = status.get("link", "")
+        found_date = status.get("found_date", "")
+        subhead = f"As of {found_date}" if found_date else "Latest road advisory"
+
+    html_out = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#14181c; position:relative; overflow:hidden; }}
+
+  .bg {{ position:absolute; inset:0; background: linear-gradient(160deg, #10141a 0%, #161c22 60%, #1c2530 100%); }}
+
+  .content {{ position:relative; z-index:2; padding:76px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+
+  .eyebrow {{ color:#6fa8c9; font-size:20px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:50px; line-height:1.05; margin-top:14px; }}
+  .date {{ color:#a9b2ba; font-size:22px; margin-top:14px; font-weight:500; }}
+  .subhead {{ color:#c9d2d9; font-size:22px; margin-top:20px; }}
+
+  .rows {{ margin-top:40px; display:flex; flex-direction:column; gap:20px; }}
+  .row {{
+    display:flex; align-items:center; justify-content:space-between; gap:20px;
+    background:rgba(247,242,227,0.04); border:1px solid rgba(247,242,227,0.14);
+    border-radius:16px; padding:28px 32px;
+  }}
+  .roadname {{ color:#eef2f5; font-size:26px; font-weight:700; }}
+  .statuspill {{ font-size:18px; font-weight:800; letter-spacing:1px; padding:10px 20px; border-radius:20px; white-space:nowrap; }}
+
+  .note {{ margin-top:34px; color:#9aa4ab; font-size:18px; line-height:1.5; }}
+
+  .footer {{ margin-top:auto; padding-top:36px; display:flex; justify-content:space-between; align-items:flex-end; }}
+  .brand {{ color:#8a949c; font-size:20px; font-weight:700; letter-spacing:2px; }}
+  .tag {{ color:#6fa8c9; font-size:18px; font-weight:600; }}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="content">
+    <div class="eyebrow">Benguet Daily Update</div>
+    <div class="title">Road Status Watch</div>
+    <div class="date">{today}</div>
+    <div class="subhead">{subhead}</div>
+
+    <div class="rows">{rows_html}
+    </div>
+
+    <div class="note">Reflects the latest DPWH-CAR advisory via BaguioCityGuide — conditions may change with weather.</div>
+
+    <div class="footer">
+      <div class="brand">BENGUET DAILY UPDATE</div>
+      <div class="tag">Source: {source_label if source_label else "—"}</div>
+    </div>
+  </div>
+</body>
+</html>"""
+    return html_out, status
+
+def build_road_caption(status):
+    if not status or not status.get("statuses"):
+        return "🛣️ No road advisory available yet — check back later."
+
+    lines = ["🛣️ Road status update:"]
+    for road, road_status in status["statuses"].items():
+        label = ROAD_STATUS_STYLES.get(road_status, ROAD_STATUS_STYLES["passable"])["label"]
+        lines.append(f"{road}: {label}")
+    if status.get("link"):
+        lines.append(status["link"])
+    return "\n".join(lines)
+
+def build_road_image():
+    html_out, status = build_road_html()
+    buffer = render_html_to_png(html_out)
+    caption = build_road_caption(status)
+    return buffer, caption
+
 if __name__ == "__main__":
     seed_fuel_state_if_empty()
 
@@ -1409,3 +1628,11 @@ if __name__ == "__main__":
         print("Sent fuel price watch post")
     except Exception as e:
         print(f"  [ERROR] fuel post failed, skipping: {e}")
+    time.sleep(2)
+
+    try:
+        road_img, road_caption = build_road_image()
+        send_photo_for_approval(road_img, "road", filename="update.png", mime="image/png", caption=road_caption)
+        print("Sent road status post")
+    except Exception as e:
+        print(f"  [ERROR] road post failed, skipping: {e}")
