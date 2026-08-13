@@ -1,0 +1,88 @@
+import os
+from flask import Flask, request, jsonify
+from main import (
+    BOT_TOKEN, answer_callback_query, send_text_message,
+    get_telegram_file_bytes, post_to_facebook
+)
+
+app = Flask(__name__)
+
+
+def handle_callback(callback):
+    data = callback.get("data", "")
+    callback_id = callback["id"]
+
+    try:
+        if data.startswith("approve_"):
+            label = data[len("approve_"):]
+            message = callback.get("message", {})
+            photos = message.get("photo", [])
+            caption = message.get("caption", "")
+
+            if not photos:
+                print(f"  [webhook] approve for '{label}' but no photo on message")
+                answer_callback_query(callback_id, "No photo found on this message")
+                return
+
+            largest_photo = photos[-1]
+            image_bytes = get_telegram_file_bytes(largest_photo["file_id"])
+
+            if not image_bytes:
+                print(f"  [webhook] approve for '{label}' but could not download image")
+                answer_callback_query(callback_id, "Could not download image — check logs")
+                return
+
+            print(f"  [webhook] approving '{label}' — posting to Facebook")
+            result = post_to_facebook(image_bytes, caption)
+            if result.get("id") or result.get("post_id"):
+                print(f"  [webhook] '{label}' posted to Facebook successfully: {result}")
+                answer_callback_query(callback_id, "Posted to Facebook!")
+                send_text_message(f"✅ '{label}' approved and posted to Facebook.")
+            else:
+                print(f"  [webhook] '{label}' Facebook post FAILED: {result}")
+                answer_callback_query(callback_id, "Facebook post failed — check logs")
+                error_info = result.get("error", result)
+                error_text = error_info.get("message", str(error_info)) if isinstance(error_info, dict) else str(error_info)
+                send_text_message(f"⚠️ '{label}' approved but Facebook post failed: {error_text}")
+
+        elif data.startswith("reject_"):
+            label = data[len("reject_"):]
+            print(f"  [webhook] '{label}' rejected, discarding")
+            answer_callback_query(callback_id, "Rejected — discarded")
+            send_text_message(f"🚫 '{label}' rejected — not posted to Facebook.")
+
+    except Exception as e:
+        print(f"  [webhook] error handling callback: {e}")
+
+
+@app.route("/telegram-webhook", methods=["POST"])
+def telegram_webhook():
+    update = request.get_json(force=True, silent=True) or {}
+    callback = update.get("callback_query")
+    if callback:
+        handle_callback(callback)
+    return jsonify({"ok": True})
+
+
+@app.route("/", methods=["GET"])
+def health():
+    return "OK — webhook server is running"
+
+
+@app.route("/register-webhook", methods=["GET"])
+def register_webhook():
+    """Visit this URL once (in a browser) after deploying, to tell Telegram
+    to start pushing button-taps here instantly instead of us polling."""
+    import requests
+    domain = request.host_url.rstrip("/")
+    webhook_url = f"{domain}/telegram-webhook"
+    response = requests.get(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
+        params={"url": webhook_url}
+    ).json()
+    return jsonify({"registered_url": webhook_url, "telegram_response": response})
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
