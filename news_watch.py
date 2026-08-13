@@ -2,7 +2,7 @@ import json
 import os
 from main import (
     gather_news, is_local_article, build_flash_news_html,
-    render_html_to_png, send_photo_for_approval,
+    render_html_to_png, render_html_to_png_dynamic, send_photo_for_approval,
     get_road_status, build_road_html, build_road_caption
 )
 
@@ -107,8 +107,8 @@ if __name__ == "__main__":
         print("No new road advisory this run.")
     else:
         print(f"New road advisory found: {road_status.get('statuses')}")
-        html_out = build_road_html(status=road_status)
-        img_buffer = render_html_to_png(html_out)
+        html_out, _ = build_road_html(status=road_status)
+        img_buffer = render_html_to_png_dynamic(html_out)
         caption = build_road_caption(road_status)
 
         send_photo_for_approval(
