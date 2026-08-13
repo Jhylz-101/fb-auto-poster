@@ -40,7 +40,12 @@ if __name__ == "__main__":
         top = local_new[0]
         print(f"New local story found: {top['title']} ({top['source']})")
 
-        html_out = build_news_html([top])
+        # Fill out the post with a few more headlines from the same scan
+        # instead of showing just one story with lots of empty space below.
+        others = [a for a in articles if a.get("link") != top.get("link")][:4]
+        display_articles = [top] + others
+
+        html_out = build_news_html(display_articles)
         img_buffer = render_html_to_png(html_out)
         caption = f"🚨 {top['title']}"
         if top.get("link"):
