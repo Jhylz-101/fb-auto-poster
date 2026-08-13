@@ -1514,11 +1514,12 @@ def normalize_road_info(info):
 
 def build_road_narrative(statuses):
     """Builds narrative sentences from extracted facts (road, status, reason,
-    location) in our own wording — not copied from the source article."""
+    location) in our own wording — not copied from the source article.
+    Returned as bullet points, one per road, for readability."""
     if not statuses:
         return ""
 
-    sentences = []
+    bullets = []
     for road, raw_info in statuses.items():
         info = normalize_road_info(raw_info)
         status_phrase = STATUS_PHRASES.get(info["status"], "affected by current conditions")
@@ -1528,9 +1529,9 @@ def build_road_narrative(statuses):
         location_phrase = f" near {location}" if location else ""
         reason_phrase = f", due to {REASON_PHRASES.get(reason, reason)}" if reason else ""
 
-        sentences.append(f"{road} is {status_phrase}{location_phrase}{reason_phrase}.")
+        bullets.append(f"• {road} is {status_phrase}{location_phrase}{reason_phrase}.")
 
-    return " ".join(sentences)
+    return "\n".join(bullets)
 
 def find_road_article():
     for name, url in ROAD_SOURCES.items():
@@ -1650,11 +1651,11 @@ def build_road_html(status=None):
             all_statuses.items(),
             key=lambda item: severity_order.get(normalize_road_info(item[1])["status"], 3)
         )
-        display_roads = dict(sorted_roads[:6])
+        display_roads = dict(sorted_roads[:8])
         omitted_count = max(0, len(all_statuses) - len(display_roads))
 
         row_count = len(display_roads)
-        row_scale = 1.0 if row_count <= 4 else max(0.72, 1.0 - (row_count - 4) * 0.07)
+        row_scale = 1.0 if row_count <= 5 else max(0.68, 1.0 - (row_count - 5) * 0.08)
 
         rows_html = ""
         for road, raw_info in display_roads.items():
@@ -1728,7 +1729,6 @@ def build_road_html(status=None):
   <div class="content">
     <div class="eyebrow">Benguet Daily Update</div>
     <div class="title">Road Status Watch</div>
-    <div class="date">{today}</div>
     <div class="subhead">{subhead}</div>
 
     <div class="rows">{rows_html}
@@ -1750,7 +1750,8 @@ def build_road_caption(status):
         return "🛣️ No road advisory available yet — check back later."
 
     lines = ["🛣️ Road status update:", build_road_narrative(status["statuses"])]
-    return "\n".join(lines)
+    caption = "\n".join(lines)
+    return caption[:1024]
 
 def build_road_image():
     html_out, status = build_road_html()
