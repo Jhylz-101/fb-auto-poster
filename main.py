@@ -527,13 +527,23 @@ FUEL_MIXED_WORDS = ["either", "may rise or fall", "may go up or down", "may incr
 
 def is_fuel_article(article):
     text = (article["title"] + " " + article["description"]).lower()
-    has_fuel_topic = (
-        "fuel price" in text or "oil price" in text or "pump price" in text
+
+    # Require real DOE pump-price advisory language, not just a passing mention
+    # of "fuel" or "diesel" (e.g. corporate earnings stories about fuel costs).
+    has_strong_signal = (
+        "pump price" in text or "per liter" in text or "/liter" in text
         or "price tracker: oil" in text or "oil monitor" in text
-        or ("diesel" in text and "price" in text)
-        or ("gasoline" in text and "price" in text)
+        or "price watch" in text
+        or ("doe" in text and any(w in text for w in ["fuel", "oil", "diesel", "gasoline", "kerosene"]))
     )
-    return has_fuel_topic
+
+    # Exclude corporate/earnings stories that just mention fuel as a cost factor
+    is_corporate_story = any(w in text for w in [
+        "profit", "earnings", "revenue", "net income", "quarter", " q1 ", " q2 ",
+        " q3 ", " q4 ", "airline", "eps", "stock", "shares"
+    ])
+
+    return has_strong_signal and not is_corporate_story
 
 def classify_fuel_direction(article):
     text = (article["title"] + " " + article["description"]).lower()
@@ -557,9 +567,7 @@ FUEL_SOURCES = {
     "Rappler": "https://www.rappler.com/feed/",
     "Inquirer": "https://www.inquirer.net/fullfeed",
     "PhilStar": "https://www.philstar.com/rss/headlines",
-    "GMA News": "https://data.gmanews.tv/gno/rss/news/feed.xml",
-    "BusinessMirror": "https://businessmirror.com.ph/feed/",
-    "BusinessWorld": "https://www.bworldonline.com/feed/"
+    "GMA News": "https://data.gmanews.tv/gno/rss/news/feed.xml"
 }
 
 def find_fuel_article():
