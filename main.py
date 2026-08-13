@@ -22,8 +22,8 @@ CITIES = ["Baguio", "La Trinidad", "Atok", "Bakun", "Bokod", "Buguias", "Itogon"
 
 NEWS_SOURCES = {
     "Rappler": "https://www.rappler.com/feed/",
-    "Inquirer": "https://www.inquirer.net/fullfeed",
-    "PhilStar": "https://www.philstar.com/rss/headlines",
+    "Inquirer": "https://newsinfo.inquirer.net/feed",
+    "PhilStar": "https://www.philstar.com/rss/nation",
     "PNA": "https://syndication.pna.gov.ph/rss",
     "NorDis": "https://nordis.net/feed/",
     "GMA News": "https://data.gmanews.tv/gno/rss/news/feed.xml"
@@ -147,10 +147,22 @@ EXCLUDE_UNLESS_LOCAL = [
     "no classes", "classes suspended"
 ]
 
+ENTERTAINMENT_KEYWORDS = [
+    "kpop", "k-pop", "bts", "blackpink", "showbiz", "celebrity", "actress",
+    "actor ", "album", "music video", "concert", "artista", "teleserye",
+    "movie premiere", "red carpet", "boy group", "girl group", "idol group",
+    "gma network star", "abs-cbn star", "kapamilya", "kapuso star"
+]
+
+def is_entertainment_article(article):
+    text = (article["title"] + " " + article["description"]).lower()
+    return any(keyword in text for keyword in ENTERTAINMENT_KEYWORDS)
+
 def is_excluded_article(article):
     text = (article["title"] + " " + article["description"]).lower()
     matches_exclude = any(keyword in text for keyword in EXCLUDE_UNLESS_LOCAL)
-    return matches_exclude and not is_local_article(article)
+    matches_entertainment = is_entertainment_article(article)
+    return (matches_exclude or matches_entertainment) and not is_local_article(article)
 
 SOURCE_PRIORITY = ["Inquirer", "PhilStar", "GMA News", "NorDis", "PNA", "Rappler"]
 
