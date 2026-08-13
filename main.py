@@ -814,19 +814,19 @@ FUEL_COLORS = {
 
 FUEL_STYLE = {
     "up": {
-        "color": "#e05252", "arrow": "▲", "badge": "FORECAST: PRICES RISING",
+        "color": "#e05252", "arrow": "▲", "badge": "PRICES RISING",
         "advice": "This week's DOE advisory points to higher pump prices at the next adjustment. Fill up before Tuesday to lock in today's rate."
     },
     "down": {
-        "color": "#4caf50", "arrow": "▼", "badge": "FORECAST: ROLLBACK",
+        "color": "#4caf50", "arrow": "▼", "badge": "ROLLBACK IN EFFECT",
         "advice": "This week's DOE advisory points to a rollback at the next adjustment. If you can wait, filling up after the drop saves you money."
     },
     "mixed": {
-        "color": "#e0c14c", "arrow": "→", "badge": "FORECAST: MIXED",
+        "color": "#e0c14c", "arrow": "→", "badge": "MIXED SIGNALS",
         "advice": "Fuel types are pointing in different directions this week — check which one applies to your vehicle before deciding when to fill up."
     },
     "unknown": {
-        "color": "#9a9a9a", "arrow": "•", "badge": "NO FORECAST YET",
+        "color": "#9a9a9a", "arrow": "•", "badge": "NO UPDATE YET",
         "advice": "No DOE advisory found yet — this updates automatically once fresh coverage is published, usually Monday evening."
     }
 }
@@ -888,7 +888,7 @@ def build_fuel_html():
         <div class="rowarrow" style="color:{color};">{arrow}</div>
       </div>"""
 
-        subhead = f"As of {found_date}" if found_date else "This week's DOE-advised range per liter"
+        subhead = f"As of {found_date}" if found_date else "This week's fuel prices per liter"
         html_out = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -936,14 +936,14 @@ def build_fuel_html():
   <div class="bg"></div>
   <div class="content">
     <div class="eyebrow">Benguet Daily Update</div>
-    <div class="title">Fuel Price Forecast</div>
+    <div class="title">Fuel Price Update</div>
     <div class="date">{today}</div>
     <div class="subhead">{subhead}</div>
 
     <div class="rows">{rows_html}
     </div>
 
-    <div class="note">Ranges reflect this week's DOE advisory ahead of the next Tuesday adjustment — actual pump prices may vary by station and region.</div>
+    <div class="note">Reflects the latest DOE-reported adjustment for this week — actual pump prices may vary by station and region.</div>
 
     <div class="footer">
       <div class="brand">BENGUET DAILY UPDATE</div>
@@ -1028,7 +1028,7 @@ def build_fuel_html():
     return html_out, direction, headline, link, source_label
 
 def build_fuel_specific_caption(estimates, link, source_label):
-    lines = ["⛽ This week's fuel price forecast (per liter):"]
+    lines = ["⛽ This week's fuel prices (per liter):"]
     for fuel_name in ["Diesel", "Gasoline", "Kerosene"]:
         if fuel_name in estimates:
             data = estimates[fuel_name]
