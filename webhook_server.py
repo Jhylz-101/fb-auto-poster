@@ -74,8 +74,11 @@ def register_webhook():
     """Visit this URL once (in a browser) after deploying, to tell Telegram
     to start pushing button-taps here instantly instead of us polling."""
     import requests
-    domain = request.host_url.rstrip("/")
-    webhook_url = f"{domain}/telegram-webhook"
+    # Railway's generated domains are always HTTPS at the edge, even though
+    # the app itself sees plain HTTP internally — force https explicitly
+    # rather than trusting request.host_url's scheme.
+    domain = request.host
+    webhook_url = f"https://{domain}/telegram-webhook"
     response = requests.get(
         f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
         params={"url": webhook_url}
