@@ -1073,80 +1073,62 @@ def truncate_text(text, max_len=340):
         return text
     return text[:max_len].rsplit(" ", 1)[0] + "…"
 
-def compute_news_layout(title, description_len, rest_count):
-    """Scale down font sizes/spacing as content grows, so everything fits
-    the fixed 1080x1350 canvas without overflowing."""
+def compute_news_layout(articles):
+    """Sizes tuned for showing up to 3 equally-weighted headlines that
+    fill the full 1080x1350 canvas with readable text throughout."""
+    count = max(len(articles), 1)
+    total_len = sum(len(a["title"]) + len(a.get("description", "")) for a in articles) if articles else 0
+    avg_len = total_len / count
+
     scale = 1.0
-
-    title_len = len(title)
-    if title_len > 100:
-        scale -= 0.14
-    elif title_len > 70:
-        scale -= 0.07
-
-    if description_len > 320:
-        scale -= 0.12
-    elif description_len > 220:
-        scale -= 0.06
-
-    if rest_count >= 4:
+    if avg_len > 220:
         scale -= 0.10
-    elif rest_count == 3:
+    elif avg_len > 150:
         scale -= 0.05
-    elif rest_count == 2:
-        scale -= 0.02
 
-    scale = max(0.70, min(1.0, scale))
+    scale = max(0.78, min(1.0, scale))
 
     return {
         "scale": scale,
-        "headline_size": round(52 * scale),
-        "lede_size": round(25 * scale),
-        "lede_max_len": round(340 * (1.0 if rest_count == 0 else max(0.55, 1.0 - rest_count * 0.12))),
-        "item_text_size": round(19 * scale),
-        "item_src_size": round(15 * scale),
-        "also_label_size": round(16 * scale),
-        "badge_size": round(22 * scale),
+        "title_size": round(44 * scale),
         "date_size": round(20 * scale),
-        "brand_size": round(22 * scale),
-        "footer_size": round(18 * scale),
-        "topbar_pad": round(44 * scale),
-        "badge_margin": round(32 * scale),
-        "headline_pad": round(24 * scale),
-        "rule_margin": round(32 * scale),
-        "lede_pad": round(30 * scale),
-        "also_margin": round(36 * scale),
-        "also_pad": round(28 * scale),
-        "item_gap": round(14 * scale),
-        "footer_pad": round(32 * scale),
+        "brand_size": round(20 * scale),
+        "num_size": round(24 * scale),
+        "headline_size": round(33 * scale),
+        "snippet_size": round(21 * scale),
+        "source_size": round(16 * scale),
+        "footer_size": round(17 * scale),
+        "card_pad": round(34 * scale),
+        "card_gap": round(24 * scale),
+        "snippet_max_len": round(170 * (1.0 if count <= 1 else max(0.65, 1.0 - (count - 1) * 0.12))),
     }
 
 def build_news_html(articles):
     today = datetime.now().strftime("%B %d, %Y")
 
-    if not articles:
-        top = {"source": "", "title": "No headlines available today", "description": "", "link": ""}
-        rest = []
-    else:
-        top = articles[0]
-        rest = articles[1:5]
+    top3 = articles[:3] if articles else []
+    if not top3:
+        top3 = [{"source": "", "title": "No headlines available today", "description": "", "link": ""}]
 
-    layout = compute_news_layout(top["title"], len(top["description"]), len(rest))
-    lede_text = truncate_text(top["description"], max_len=layout["lede_max_len"]) if top["description"] else "Full details available from the source below."
+    layout = compute_news_layout(top3)
 
-    rest_html = ""
-    for a in rest:
-        rest_html += f'      <div class="item"><span class="dot"></span><span class="itext">{a["title"]}</span><span class="src">{a["source"]}</span></div>\n'
+    cards_html = ""
+    for i, a in enumerate(top3, start=1):
+        snippet = truncate_text(a.get("description", ""), max_len=layout["snippet_max_len"]) if a.get("description") else ""
+        source_label = a.get("source") or "Wire"
+        tag_label = "LOCAL" if a.get("link") and is_local_article(a) else source_label.upper()
+        snippet_html = f'<div class="snippet">{snippet}</div>' if snippet else ""
 
-    rest_section = ""
-    if rest_html:
-        rest_section = f"""
-    <div class="also">
-      <div class="also-label">Also in the news</div>
-{rest_html}    </div>"""
-
-    source_label = top["source"] if top["source"] else "Wire"
-    badge_label = "Local News" if top.get("link") and is_local_article(top) else "Top Story"
+        cards_html += f"""
+    <div class="card">
+      <div class="cardtop">
+        <div class="num">{i}</div>
+        <div class="tag">{tag_label}</div>
+      </div>
+      <div class="headline">{a["title"]}</div>
+      {snippet_html}
+      <div class="source">{source_label}</div>
+    </div>"""
 
     html_out = f"""<!DOCTYPE html>
 <html>
@@ -1160,37 +1142,40 @@ def build_news_html(articles):
   .bg {{ position:absolute; inset:0; background: linear-gradient(180deg, #0d0d0d 0%, #1a1414 55%, #241412 100%); }}
   .texture {{ position:absolute; inset:0; opacity:0.06; background-image: repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px); }}
 
-  .content {{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; }}
+  .content {{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; padding:44px 60px 42px; }}
 
-  .topbar {{ display:flex; justify-content:space-between; align-items:center; padding:{layout["topbar_pad"]}px 70px 0; }}
+  .topbar {{ display:flex; justify-content:space-between; align-items:center; }}
   .brand {{ color:#b02e26; font-size:{layout["brand_size"]}px; font-weight:800; letter-spacing:3px; }}
   .date {{ color:#9a9a9a; font-size:{layout["date_size"]}px; font-weight:500; }}
 
-  .badge {{
-    margin:{layout["badge_margin"]}px 70px 0; align-self:flex-start;
-    background:#b02e26; color:#fff; font-weight:800; font-size:{layout["badge_size"]}px; letter-spacing:3px;
-    padding:11px 24px; text-transform:uppercase;
+  .title {{
+    font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:{layout["title_size"]}px;
+    margin-top:20px; text-transform:uppercase; letter-spacing:1px;
   }}
 
+  .cards {{ flex:1; display:flex; flex-direction:column; justify-content:space-between; gap:{layout["card_gap"]}px; margin-top:28px; }}
+
+  .card {{
+    background:rgba(247,242,227,0.04); border:1px solid #3a3a3a; border-radius:16px;
+    padding:{layout["card_pad"]}px; flex:1; display:flex; flex-direction:column; justify-content:center;
+  }}
+  .cardtop {{ display:flex; align-items:center; gap:14px; }}
+  .num {{
+    background:#b02e26; color:#fff; font-weight:800; font-size:{layout["num_size"]}px;
+    width:{round(layout["num_size"]*1.7)}px; height:{round(layout["num_size"]*1.7)}px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; flex-shrink:0;
+  }}
+  .tag {{ color:#f0a97a; font-size:{layout["source_size"]}px; font-weight:700; letter-spacing:2px; }}
   .headline {{
-    font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:{layout["headline_size"]}px; line-height:1.1;
-    padding:{layout["headline_pad"]}px 70px 0; text-transform:none;
+    color:#f7f4ee; font-size:{layout["headline_size"]}px; font-weight:700; line-height:1.25;
+    margin-top:14px;
   }}
+  .snippet {{ color:#c9c3ba; font-size:{layout["snippet_size"]}px; line-height:1.45; margin-top:12px; }}
+  .source {{ color:#7a7a7a; font-size:{layout["source_size"]}px; margin-top:14px; font-weight:600; }}
 
-  .rule {{ height:2px; background:#3a3a3a; margin:{layout["rule_margin"]}px 70px 0; }}
-
-  .lede {{ color:#e3ded3; font-size:{layout["lede_size"]}px; line-height:1.5; padding:{layout["lede_pad"]}px 70px 0; font-weight:400; }}
-
-  .also {{ margin:{layout["also_margin"]}px 70px 0; border-top:1px solid #3a3a3a; padding-top:{layout["also_pad"]}px; }}
-  .also-label {{ color:#8a8a8a; font-size:{layout["also_label_size"]}px; font-weight:700; letter-spacing:2px; text-transform:uppercase; margin-bottom:16px; }}
-  .item {{ display:flex; align-items:flex-start; gap:12px; margin-top:{layout["item_gap"]}px; }}
-  .item .dot {{ width:7px; height:7px; border-radius:50%; background:#b02e26; flex-shrink:0; margin-top:9px; }}
-  .item .itext {{ color:#d8d2c6; font-size:{layout["item_text_size"]}px; line-height:1.4; flex:1; }}
-  .item .src {{ color:#8a8a8a; font-size:{layout["item_src_size"]}px; white-space:nowrap; margin-top:2px; }}
-
-  .footer {{ margin-top:auto; display:flex; justify-content:space-between; align-items:center; padding:{layout["footer_pad"]}px 70px 42px; border-top:1px solid #3a3a3a; }}
-  .source {{ color:#8a8a8a; font-size:{layout["footer_size"]}px; }}
-  .cta {{ color:#f0a97a; font-size:{layout["footer_size"]}px; font-weight:700; }}
+  .footer {{ margin-top:24px; display:flex; justify-content:space-between; align-items:center; padding-top:20px; border-top:1px solid #3a3a3a; }}
+  .footerbrand {{ color:#8a8078; font-size:{layout["footer_size"]}px; font-weight:700; letter-spacing:2px; }}
+  .footertag {{ color:#f0a97a; font-size:{layout["footer_size"]}px; font-weight:700; }}
 </style>
 </head>
 <body>
@@ -1202,18 +1187,14 @@ def build_news_html(articles):
       <div class="date">{today}</div>
     </div>
 
-    <div class="badge">{badge_label}</div>
+    <div class="title">Today's Top Stories</div>
 
-    <div class="headline">{top["title"]}</div>
-
-    <div class="rule"></div>
-
-    <div class="lede">{lede_text}</div>
-{rest_section}
+    <div class="cards">{cards_html}
+    </div>
 
     <div class="footer">
-      <div class="source">Source: {source_label}</div>
-      <div class="cta">Full story via {source_label} →</div>
+      <div class="footerbrand">BENGUET DAILY UPDATE</div>
+      <div class="footertag">Full stories via sources above →</div>
     </div>
   </div>
 </body>
@@ -1224,20 +1205,12 @@ def build_news_caption(articles):
     if not articles:
         return "No headlines available today."
 
-    top = articles[0]
-    rest = articles[1:5]
-
-    lines = [f"📰 {top['title']}"]
-    if top.get("link"):
-        lines.append(top["link"])
-
-    if rest:
-        lines.append("")
-        lines.append("Also:")
-        for a in rest:
-            lines.append(f"• {a['title']}")
-            if a.get("link"):
-                lines.append(a["link"])
+    top3 = articles[:3]
+    lines = ["📰 Today's top stories:"]
+    for i, a in enumerate(top3, start=1):
+        lines.append(f"{i}. {a['title']}")
+        if a.get("link"):
+            lines.append(a["link"])
 
     caption = "\n".join(lines)
     return caption[:1024]
