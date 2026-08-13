@@ -569,6 +569,7 @@ def classify_fuel_direction(article):
         return "unknown"
 
 FUEL_SOURCES = {
+    "GMA Economy": "https://data.gmanetwork.com/gno/rss/money/economy/feed.xml",
     "Rappler": "https://www.rappler.com/feed/",
     "Inquirer": "https://www.inquirer.net/fullfeed",
     "PhilStar": "https://www.philstar.com/rss/headlines",
