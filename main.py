@@ -1391,13 +1391,16 @@ ROAD_SOURCES = {
 
 TRACKED_ROADS = [
     "Kennon Road", "Halsema Highway", "Marcos Highway",
-    "Benguet-Nueva Vizcaya Road", "Baguio-Bontoc Road", "Naguilian Road"
+    "Benguet-Nueva Vizcaya Road", "Baguio-Bontoc Road", "Naguilian Road",
+    "Gov. Bado Dangwa National Road", "Baguio-Itogon Road",
+    "Tawang-Ambiong Road", "Abatan-Mankayan-Cervantes Road",
+    "Pico-Lamtang Road", "Itogon-Dalupirip Road"
 ]
 
 ROAD_TOPIC_KEYWORDS = [
     "road condition", "road advisory", "passable", "not passable", "impassable",
     "one lane", "one-lane", "road closure", "landslide", "rockslide", "road slip",
-    "mudflow", "dpwh"
+    "mudflow", "dpwh", "slope collapse", "rocknet"
 ]
 
 def is_road_article(article):
@@ -1412,7 +1415,9 @@ ROAD_STATUS_STYLES = {
 
 REASON_KEYWORDS = [
     "road slip", "landslide", "rockslide", "mudflow", "heavy rainfall",
-    "heavy rain", "flooding", "erosion", "debris", "continuous heavy rainfall"
+    "heavy rain", "flooding", "erosion", "debris", "continuous heavy rainfall",
+    "slope collapse", "soil collapse", "rock collapse", "damaged abutment",
+    "scoured", "cracks on the girder"
 ]
 
 def classify_road_status_text(window_text):
@@ -1477,7 +1482,13 @@ REASON_PHRASES = {
     "flooding": "flooding",
     "erosion": "erosion",
     "debris": "debris on the road",
-    "continuous heavy rainfall": "continuous heavy rainfall"
+    "continuous heavy rainfall": "continuous heavy rainfall",
+    "slope collapse": "a slope collapse",
+    "soil collapse": "a soil collapse",
+    "rock collapse": "a rock collapse",
+    "damaged abutment": "a damaged bridge abutment",
+    "scoured": "a scoured bridge foundation",
+    "cracks on the girder": "cracked bridge girders"
 }
 
 STATUS_PHRASES = {
@@ -1636,29 +1647,29 @@ def build_road_html(status=None):
 
   .content {{ position:relative; z-index:2; padding:76px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
 
-  .eyebrow {{ color:#6fa8c9; font-size:20px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
-  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:50px; line-height:1.05; margin-top:14px; }}
-  .date {{ color:#a9b2ba; font-size:22px; margin-top:14px; font-weight:500; }}
-  .subhead {{ color:#c9d2d9; font-size:22px; margin-top:20px; }}
+  .eyebrow {{ color:#6fa8c9; font-size:22px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:54px; line-height:1.05; margin-top:14px; }}
+  .date {{ color:#c9d2d9; font-size:25px; margin-top:14px; font-weight:500; }}
+  .subhead {{ color:#e2e8ec; font-size:26px; margin-top:20px; font-weight:600; }}
 
   .narrative {{
-    margin-top:30px; background:rgba(247,242,227,0.04); border:1px solid rgba(247,242,227,0.14);
-    border-radius:16px; padding:28px 32px; color:#d8dee3; font-size:21px; line-height:1.55;
+    margin-top:30px; background:rgba(247,242,227,0.06); border:1px solid rgba(247,242,227,0.16);
+    border-radius:16px; padding:32px 34px; color:#eef2f5; font-size:26px; line-height:1.6;
   }}
 
   .rows {{ margin-top:30px; display:flex; flex-direction:column; gap:18px; }}
   .row {{
     display:flex; align-items:center; justify-content:space-between; gap:20px;
-    background:rgba(247,242,227,0.04); border:1px solid rgba(247,242,227,0.14);
-    border-radius:16px; padding:26px 30px;
+    background:rgba(247,242,227,0.06); border:1px solid rgba(247,242,227,0.16);
+    border-radius:16px; padding:28px 32px;
   }}
-  .roadname {{ color:#eef2f5; font-size:24px; font-weight:700; }}
-  .statuspill {{ font-size:17px; font-weight:800; letter-spacing:1px; padding:9px 18px; border-radius:20px; white-space:nowrap; }}
+  .roadname {{ color:#f7fafc; font-size:28px; font-weight:700; }}
+  .statuspill {{ font-size:20px; font-weight:800; letter-spacing:1px; padding:11px 22px; border-radius:20px; white-space:nowrap; }}
 
-  .note {{ margin-top:30px; color:#9aa4ab; font-size:17px; line-height:1.5; }}
+  .note {{ margin-top:30px; color:#c3ccd2; font-size:19px; line-height:1.5; }}
 
   .footer {{ margin-top:auto; padding-top:32px; display:flex; justify-content:space-between; align-items:flex-end; }}
-  .brand {{ color:#8a949c; font-size:20px; font-weight:700; letter-spacing:2px; }}
+  .brand {{ color:#a8b2ba; font-size:22px; font-weight:700; letter-spacing:2px; }}
   .tag {{ color:#6fa8c9; font-size:18px; font-weight:600; }}
 </style>
 </head>
