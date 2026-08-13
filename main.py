@@ -553,15 +553,33 @@ def classify_fuel_direction(article):
     else:
         return "unknown"
 
+FUEL_SOURCES = {
+    "Rappler": "https://www.rappler.com/feed/",
+    "Inquirer": "https://www.inquirer.net/fullfeed",
+    "PhilStar": "https://www.philstar.com/rss/headlines",
+    "GMA News": "https://data.gmanews.tv/gno/rss/news/feed.xml",
+    "BusinessMirror": "https://businessmirror.com.ph/feed/",
+    "BusinessWorld": "https://www.bworldonline.com/feed/"
+}
+
 def find_fuel_article():
     candidates = []
-    for name, url in NEWS_SOURCES.items():
-        if name in ("PNA", "NorDis"):
-            continue
-        for article in get_articles_from_feed(url, limit=20):
+    near_misses = []
+    for name, url in FUEL_SOURCES.items():
+        articles = get_articles_from_feed(url, limit=20)
+        print(f"  [fuel scan] {name}: {len(articles)} articles fetched")
+        for article in articles:
             article["source"] = name
+            text = (article["title"] + " " + article["description"]).lower()
             if is_fuel_article(article):
                 candidates.append(article)
+            elif any(w in text for w in ["fuel", "diesel", "gasoline", "pump price", "oil price"]):
+                near_misses.append(f"{name}: {article['title']}")
+
+    print(f"  [fuel scan] {len(candidates)} matching fuel articles found")
+    if not candidates and near_misses:
+        print(f"  [fuel scan] near-miss headlines (mentioned fuel-ish terms but didn't match): {near_misses[:5]}")
+
     return candidates[0] if candidates else None
 
 FUEL_STYLE = {
