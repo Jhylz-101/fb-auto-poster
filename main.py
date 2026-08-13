@@ -1494,6 +1494,19 @@ def process_telegram_approvals():
     and actually publishes to Facebook on approval. Meant to be called
     frequently (e.g. every 15 min from the flash-watch service) so
     approvals get acted on promptly."""
+    # getUpdates (polling) silently returns nothing if a webhook is set —
+    # check for that and clear it, since we rely on polling.
+    try:
+        webhook_info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=10).json()
+        webhook_url = webhook_info.get("result", {}).get("url", "")
+        if webhook_url:
+            print(f"  [approvals] a webhook is set ({webhook_url}) — this blocks polling, deleting it")
+            requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/deleteWebhook", timeout=10)
+        else:
+            print("  [approvals] no webhook set, polling should work normally")
+    except Exception as e:
+        print(f"  [approvals] could not check webhook status: {e}")
+
     offset = load_telegram_offset()
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates"
     params = {"timeout": 5}
@@ -1511,6 +1524,7 @@ def process_telegram_approvals():
         return
 
     updates = response.get("result", [])
+    print(f"  [approvals] getUpdates returned {len(updates)} update(s) total, offset was: {offset}")
     if not updates:
         print("  [approvals] no new button presses")
         return
@@ -1519,6 +1533,8 @@ def process_telegram_approvals():
     for update in updates:
         latest_update_id = update["update_id"]
         callback = update.get("callback_query")
+        other_keys = [k for k in update.keys() if k != "update_id"]
+        print(f"  [approvals] update_id={update['update_id']}, contains: {other_keys}")
         if not callback:
             continue
 
