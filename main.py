@@ -670,10 +670,14 @@ def save_fuel_state(state):
 
 def get_fuel_estimates():
     """Scan all fuel-related sources this week and merge whatever specific
-    per-liter figures we can find."""
+    per-liter figures we can find. Tries the fast RSS snippet first; only
+    fetches the full article page (slower) as a last resort, and only up
+    to a small number of times so this can't run away and hang."""
     combined = {}
     source_used = None
     link_used = ""
+    full_fetch_count = 0
+    MAX_FULL_FETCHES = 4
 
     for name, url in FUEL_SOURCES.items():
         articles = get_articles_from_feed(url, limit=20)
@@ -681,13 +685,17 @@ def get_fuel_estimates():
             if not is_fuel_article(article):
                 continue
 
-            source_text = article["description"]
-            if article.get("link"):
+            # Try the fast RSS description first — no extra network call
+            estimates = parse_specific_fuel_estimates(article["description"])
+
+            # Only fetch the full page if the snippet didn't have enough,
+            # and only up to our fetch budget for this run
+            if not estimates and article.get("link") and full_fetch_count < MAX_FULL_FETCHES:
+                full_fetch_count += 1
                 fetched = fetch_full_article_text(article["link"])
                 if fetched:
-                    source_text = fetched
+                    estimates = parse_specific_fuel_estimates(fetched)
 
-            estimates = parse_specific_fuel_estimates(source_text)
             if estimates:
                 print(f"  [fuel scan] {name}: found specific figures for {list(estimates.keys())}")
                 for fuel, val in estimates.items():
