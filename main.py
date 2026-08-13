@@ -1392,7 +1392,7 @@ ROAD_SOURCES = {
 TRACKED_ROADS = [
     "Kennon Road", "Halsema Highway", "Marcos Highway",
     "Benguet-Nueva Vizcaya Road", "Baguio-Bontoc Road", "Naguilian Road",
-    "Gov. Bado Dangwa National Road", "Baguio-Itogon Road",
+    "Gov Bado Dangwa National Road", "Baguio-Itogon Road",
     "Tawang-Ambiong Road", "Abatan-Mankayan-Cervantes Road",
     "Pico-Lamtang Road", "Itogon-Dalupirip Road"
 ]
@@ -1449,27 +1449,34 @@ def extract_location(window_text):
         return f"{place}, {town}"
     return None
 
-def extract_road_statuses(text):
-    results = {}
-    text_lower = text.lower()
-    positions = []
-    for road in TRACKED_ROADS:
-        idx = text_lower.find(road.lower())
-        if idx != -1:
-            positions.append((idx, road))
-    positions.sort()
+def split_sentences(text):
+    return re.split(r"(?<=[.!?])\s+", text)
 
-    for i, (idx, road) in enumerate(positions):
-        next_idx = positions[i + 1][0] if i + 1 < len(positions) else len(text)
-        end = min(idx + 260, next_idx, len(text))
-        window = text[idx:end]
-        status = classify_road_status_text(window)
-        if status:
-            results[road] = {
-                "status": status,
-                "reason": extract_reason(window),
-                "location": extract_location(window)
-            }
+def extract_road_statuses(text):
+    """Extracts status/reason/location per road using sentence boundaries,
+    so one road's status can never bleed into another's (a common failure
+    mode with fixed character windows in dense prose)."""
+    # Strip periods from known abbreviations first, so they don't get
+    # misread as sentence boundaries (e.g. "Gov. Bado Dangwa..." would
+    # otherwise get split into two fragments at "Gov.").
+    text = text.replace("Gov.", "Gov")
+
+    results = {}
+    sentences = split_sentences(text)
+
+    for sentence in sentences:
+        sentence_lower = sentence.lower()
+        for road in TRACKED_ROADS:
+            if road in results:
+                continue
+            if road.lower() in sentence_lower:
+                status = classify_road_status_text(sentence)
+                if status:
+                    results[road] = {
+                        "status": status,
+                        "reason": extract_reason(sentence),
+                        "location": extract_location(sentence)
+                    }
     return results
 
 REASON_PHRASES = {
