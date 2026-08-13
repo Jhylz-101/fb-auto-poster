@@ -399,8 +399,16 @@ def build_currency_gold_html():
 
     def trend_badge(trend):
         if trend["pct"] is None:
-            return f'<span class="trend" style="color:{trend["color"]}">{trend["arrow"]}</span>'
-        return f'<span class="trend" style="color:{trend["color"]}">{trend["arrow"]} {abs(trend["pct"]):.2f}%</span>'
+            label = "NO PREVIOUS DATA"
+        elif trend["direction"] == "up":
+            label = f"UP {abs(trend['pct']):.2f}% VS YESTERDAY"
+        elif trend["direction"] == "down":
+            label = f"DOWN {abs(trend['pct']):.2f}% VS YESTERDAY"
+        else:
+            label = "STEADY VS YESTERDAY"
+        return f'''<div class="trendbadge" style="background:{trend["color"]}22; color:{trend["color"]}; border:1px solid {trend["color"]}66;">
+            <span class="arrow">{trend["arrow"]}</span> {label}
+          </div>'''
 
     html_out = f"""<!DOCTYPE html>
 <html>
@@ -437,7 +445,11 @@ def build_currency_gold_html():
   .card .sub {{ color:#8fae9d; font-size:19px; margin-top:8px; }}
   .card .valuewrap {{ text-align:right; }}
   .card .value {{ font-family:'Fraunces',serif; font-weight:700; color:#e9c25f; font-size:52px; }}
-  .card .trend {{ display:block; font-size:20px; font-weight:700; margin-top:6px; }}
+  .trendbadge {{
+    display:inline-flex; align-items:center; gap:8px; margin-top:14px;
+    padding:8px 16px; border-radius:20px; font-size:16px; font-weight:800; letter-spacing:0.5px;
+  }}
+  .trendbadge .arrow {{ font-size:18px; }}
 
   .note {{ margin-top:40px; color:#a9c2b3; font-size:22px; line-height:1.5; }}
   .note b {{ color:#e9c25f; }}
