@@ -1639,9 +1639,25 @@ def build_road_html(status=None):
         rows_html = ""
         narrative = "No road advisory available yet — this updates automatically once fresh coverage is published."
         subhead = "No road advisory available yet"
+        row_scale = 1.0
     else:
+        all_statuses = status["statuses"]
+
+        # If there are a lot of roads, prioritize the most disruptive ones
+        # (closed > one-lane > passable) so the important stuff isn't cut off.
+        severity_order = {"closed": 0, "one_lane": 1, "passable": 2}
+        sorted_roads = sorted(
+            all_statuses.items(),
+            key=lambda item: severity_order.get(normalize_road_info(item[1])["status"], 3)
+        )
+        display_roads = dict(sorted_roads[:6])
+        omitted_count = max(0, len(all_statuses) - len(display_roads))
+
+        row_count = len(display_roads)
+        row_scale = 1.0 if row_count <= 4 else max(0.72, 1.0 - (row_count - 4) * 0.07)
+
         rows_html = ""
-        for road, raw_info in status["statuses"].items():
+        for road, raw_info in display_roads.items():
             info = normalize_road_info(raw_info)
             style = ROAD_STATUS_STYLES.get(info["status"], ROAD_STATUS_STYLES["passable"])
             rows_html += f"""
@@ -1649,9 +1665,21 @@ def build_road_html(status=None):
         <div class="roadname">{road}</div>
         <div class="statuspill" style="background:{style['color']}22; color:{style['color']}; border:1px solid {style['color']}66;">{style['label']}</div>
       </div>"""
-        narrative = build_road_narrative(status["statuses"])
+        if omitted_count:
+            rows_html += f"""
+      <div class="more-note">+ {omitted_count} more road{'s' if omitted_count != 1 else ''} affected — see caption for full list</div>"""
+
+        narrative = build_road_narrative(all_statuses)
         found_date = status.get("found_date", "")
         subhead = f"As of {found_date}" if found_date else "Latest road advisory"
+
+    row_gap = round(24 * row_scale)
+    row_pad_v = round(34 * row_scale)
+    row_pad_h = round(36 * row_scale)
+    roadname_size = round(30 * row_scale)
+    pill_size = round(21 * row_scale)
+    pill_pad_v = round(12 * row_scale)
+    pill_pad_h = round(24 * row_scale)
 
     html_out = f"""<!DOCTYPE html>
 <html>
@@ -1677,14 +1705,15 @@ def build_road_html(status=None):
     border-radius:16px; padding:32px 34px; color:#eef2f5; font-size:26px; line-height:1.6;
   }}
 
-  .rows {{ margin-top:30px; display:flex; flex-direction:column; gap:18px; }}
+  .rows {{ margin-top:36px; display:flex; flex-direction:column; gap:{row_gap}px; }}
   .row {{
     display:flex; align-items:center; justify-content:space-between; gap:20px;
     background:rgba(247,242,227,0.06); border:1px solid rgba(247,242,227,0.16);
-    border-radius:16px; padding:28px 32px;
+    border-radius:16px; padding:{row_pad_v}px {row_pad_h}px;
   }}
-  .roadname {{ color:#f7fafc; font-size:28px; font-weight:700; }}
-  .statuspill {{ font-size:20px; font-weight:800; letter-spacing:1px; padding:11px 22px; border-radius:20px; white-space:nowrap; }}
+  .roadname {{ color:#f7fafc; font-size:{roadname_size}px; font-weight:700; }}
+  .statuspill {{ font-size:{pill_size}px; font-weight:800; letter-spacing:1px; padding:{pill_pad_v}px {pill_pad_h}px; border-radius:20px; white-space:nowrap; }}
+  .more-note {{ color:#c3ccd2; font-size:18px; text-align:center; padding-top:6px; font-style:italic; }}
 
   .note {{ margin-top:30px; color:#c3ccd2; font-size:19px; line-height:1.5; }}
 
@@ -1701,8 +1730,6 @@ def build_road_html(status=None):
     <div class="title">Road Status Watch</div>
     <div class="date">{today}</div>
     <div class="subhead">{subhead}</div>
-
-    <div class="narrative">{narrative}</div>
 
     <div class="rows">{rows_html}
     </div>
