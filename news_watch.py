@@ -3,7 +3,8 @@ import os
 from main import (
     gather_news, is_local_article, build_flash_news_html,
     render_html_to_png_dynamic, send_photo_for_approval,
-    get_road_status, build_road_html, build_road_caption
+    get_road_status, build_road_html, build_road_caption,
+    process_telegram_approvals
 )
 
 SEEN_FILE = "/data/seen_news.json"
@@ -58,6 +59,11 @@ def send_flash(label, article, badge_label):
 
 
 if __name__ == "__main__":
+    # Check for Approve/Reject button presses first, so approvals get
+    # acted on promptly regardless of what else this run finds.
+    print("Checking for pending Telegram approvals...")
+    process_telegram_approvals()
+
     seen = load_seen()
     print(f"Loaded {len(seen)} previously-seen local story links")
 
