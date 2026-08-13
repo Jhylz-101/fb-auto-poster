@@ -649,10 +649,28 @@ def parse_specific_fuel_estimates(text):
 
     return results
 
+FUEL_STATE_FILE = "/data/fuel_state.json"
+
+def load_fuel_state():
+    if os.path.exists(FUEL_STATE_FILE):
+        try:
+            with open(FUEL_STATE_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_fuel_state(state):
+    try:
+        os.makedirs(os.path.dirname(FUEL_STATE_FILE), exist_ok=True)
+        with open(FUEL_STATE_FILE, "w") as f:
+            json.dump(state, f)
+    except Exception as e:
+        print(f"  [fuel state] could not save: {e}")
+
 def get_fuel_estimates():
     """Scan all fuel-related sources this week and merge whatever specific
-    per-liter figures we can find. Falls back to qualitative direction if
-    nothing specific turns up anywhere."""
+    per-liter figures we can find."""
     combined = {}
     source_used = None
     link_used = ""
@@ -689,9 +707,59 @@ def get_fuel_estimates():
         article_info = {"source": source_used or "Multiple sources", "link": link_used}
         return combined, article_info
 
-    print("  [fuel scan] no specific per-liter estimates found from any source, falling back to general article")
+    print("  [fuel scan] no specific per-liter estimates found from any source this run")
     fallback = find_fuel_article()
     return {}, fallback
+
+def get_fuel_status():
+    """Combines fresh scanning with persisted state: if this run finds a
+    genuinely new article (different link than what's stored), it becomes
+    the new current status and the old one is kept as previous. If nothing
+    new is found, we keep showing the last known status instead of an
+    empty 'no forecast yet' card."""
+    state = load_fuel_state()
+    fresh_estimates, fresh_article = get_fuel_estimates()
+    fresh_link = fresh_article.get("link", "") if fresh_article else ""
+
+    stored_current = state.get("current")
+    is_new = bool(fresh_link) and fresh_link != (stored_current or {}).get("link")
+
+    if fresh_estimates and is_new:
+        print("  [fuel state] new specific data found, updating current status")
+        if stored_current:
+            state["previous"] = stored_current
+        state["current"] = {
+            "mode": "specific",
+            "estimates": fresh_estimates,
+            "source": fresh_article.get("source", ""),
+            "link": fresh_link,
+            "found_date": datetime.now().strftime("%B %d, %Y")
+        }
+        save_fuel_state(state)
+        return state["current"]
+
+    if not fresh_estimates and fresh_article and is_new:
+        direction = classify_fuel_direction(fresh_article)
+        print(f"  [fuel state] new general article found (no specific numbers), direction={direction}")
+        if stored_current:
+            state["previous"] = stored_current
+        state["current"] = {
+            "mode": "general",
+            "direction": direction,
+            "headline": fresh_article["title"],
+            "source": fresh_article.get("source", ""),
+            "link": fresh_link,
+            "found_date": datetime.now().strftime("%B %d, %Y")
+        }
+        save_fuel_state(state)
+        return state["current"]
+
+    if stored_current:
+        print(f"  [fuel state] no new update this run, reusing status from {stored_current.get('found_date', 'earlier')}")
+        return stored_current
+
+    print("  [fuel state] no data found this run and nothing stored previously")
+    return None
 
 FUEL_COLORS = {
     "Diesel": "#4caf50",
@@ -714,15 +782,32 @@ FUEL_STYLE = {
     },
     "unknown": {
         "color": "#9a9a9a", "arrow": "•", "badge": "NO FORECAST YET",
-        "advice": "No DOE advisory found in today's coverage yet — this updates automatically once the weekly report is published, usually Monday evening."
+        "advice": "No DOE advisory found yet — this updates automatically once fresh coverage is published, usually Monday evening."
     }
 }
 
 def build_fuel_html():
-    estimates, article = get_fuel_estimates()
+    status = get_fuel_status()
     today = datetime.now().strftime("%B %d, %Y")
-    source_label = article["source"] if article else ""
-    link = article.get("link", "") if article else ""
+
+    if status is None:
+        estimates = {}
+        mode = "unknown"
+        source_label, link, found_date, headline = "", "", "", "No fuel price advisory found yet"
+    elif status.get("mode") == "specific":
+        estimates = status["estimates"]
+        mode = "specific"
+        source_label = status.get("source", "")
+        link = status.get("link", "")
+        found_date = status.get("found_date", "")
+        headline = ""
+    else:
+        estimates = {}
+        mode = status.get("direction", "unknown")
+        source_label = status.get("source", "")
+        link = status.get("link", "")
+        found_date = status.get("found_date", "")
+        headline = status.get("headline", "")
 
     if estimates:
         rows_html = ""
@@ -758,7 +843,7 @@ def build_fuel_html():
         <div class="rowarrow" style="color:{color};">{arrow}</div>
       </div>"""
 
-        headline = "This week's DOE-advised range per liter"
+        subhead = f"As of {found_date}" if found_date else "This week's DOE-advised range per liter"
         html_out = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -808,7 +893,7 @@ def build_fuel_html():
     <div class="eyebrow">Benguet Daily Update</div>
     <div class="title">Fuel Price Forecast</div>
     <div class="date">{today}</div>
-    <div class="subhead">{headline}</div>
+    <div class="subhead">{subhead}</div>
 
     <div class="rows">{rows_html}
     </div>
@@ -824,13 +909,12 @@ def build_fuel_html():
 </html>"""
         return html_out, "specific", estimates, link, source_label
 
-    # Fallback: no specific numbers found, use qualitative direction
-    if article:
-        direction = classify_fuel_direction(article)
-        headline = article["title"]
-    else:
-        direction = "unknown"
+    # Qualitative fallback (no specific numbers available for this status)
+    direction = mode
+    if not headline:
         headline = "No fuel price advisory found this week"
+    if found_date:
+        headline = f"{headline} (as of {found_date})"
 
     style = FUEL_STYLE[direction]
 
