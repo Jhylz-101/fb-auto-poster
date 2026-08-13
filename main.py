@@ -1275,7 +1275,34 @@ def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="im
         print(f"  [telegram] '{label}' delivered OK")
     return result
 
+def seed_fuel_state_if_empty():
+    """One-time bootstrap: if no fuel state exists yet, seed it with real,
+    manually-verified numbers so the system has something to compare
+    against instead of starting from zero. Safe to leave in permanently —
+    it only writes if the file doesn't already exist."""
+    if os.path.exists(FUEL_STATE_FILE):
+        print("  [fuel seed] state file already exists, skipping seed")
+        return
+
+    print("  [fuel seed] no state file found, seeding with known real data")
+    seed_state = {
+        "current": {
+            "mode": "specific",
+            "estimates": {
+                "Diesel": {"up": 0.0, "down": 4.30, "single": True, "direction": "down"},
+                "Gasoline": {"up": 0.0, "down": 4.70, "single": True, "direction": "down"},
+                "Kerosene": {"up": 0.0, "down": 4.88, "single": True, "direction": "down"}
+            },
+            "source": "GMA News",
+            "link": "https://www.gmanetwork.com/news/money/economy/997957/fuel-prices-down-by-over-p4-per-liter-starting-august-11/story/",
+            "found_date": "August 10, 2026"
+        }
+    }
+    save_fuel_state(seed_state)
+
 if __name__ == "__main__":
+    seed_fuel_state_if_empty()
+
     weather_img, weather_caption = build_weather_image()
     send_photo_for_approval(weather_img, "weather", filename="update.png", mime="image/png", caption=weather_caption)
     print("Sent weather post")
