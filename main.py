@@ -1556,6 +1556,7 @@ def process_telegram_approvals():
                 label = data[len("reject_"):]
                 print(f"  [approvals] '{label}' rejected, discarding")
                 answer_callback_query(callback_id, "Rejected — discarded")
+                send_text_message(f"🚫 '{label}' rejected — not posted to Facebook.")
         except Exception as e:
             # Never let a single bad update block the offset from advancing —
             # otherwise this update gets retried forever on every future run.
