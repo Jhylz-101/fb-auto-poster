@@ -1129,8 +1129,14 @@ def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="im
     }
     if caption:
         data["caption"] = caption
+        print(f"  [telegram] caption length for '{label}': {len(caption)} chars")
     response = requests.post(url, files=files, data=data)
-    return response.json()
+    result = response.json()
+    if not result.get("ok"):
+        print(f"  [telegram ERROR] '{label}' failed: {result}")
+    else:
+        print(f"  [telegram] '{label}' delivered OK")
+    return result
 
 if __name__ == "__main__":
     weather_img, weather_caption = build_weather_image()
