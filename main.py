@@ -614,22 +614,23 @@ def fetch_full_article_text(url):
 # Matches recurring "range" format, e.g.:
 # "Diesel - may either go up by P0.84 or go down by P1.16 per liter"
 FUEL_RANGE_PATTERN = re.compile(
-    r"(Diesel|Gasoline|Kerosene)\s*[-–:]\s*may\s*(?:either\s*)?go\s*up\s*by\s*P?([\d.]+)\s*(?:per\s*liter\s*)?or\s*go\s*down\s*by\s*P?([\d.]+)\s*per\s*liter",
+    r"(Diesel|Gasoline|Kerosene)\s*[-–:]\s*may\s*(?:either\s*)?go\s*up\s*by\s*[₱P]?([\d.]+)\s*(?:per\s*liter\s*)?or\s*go\s*down\s*by\s*[₱P]?([\d.]+)\s*per\s*liter",
     re.IGNORECASE
 )
 
 # Matches single-direction phrasing used by other outlets, e.g.:
 # "Diesel prices are set to rise by more than P2 per liter this week"
 # "gasoline prices may either increase or roll back by up to P1 per liter"
+# "gasoline prices will be slashed by ₱4.70 per liter"
 FUEL_SINGLE_PATTERN = re.compile(
-    r"(Diesel|Gasoline|Kerosene)\w*\s+(?:prices?\s+)?(?:may\s+|will\s+|are\s+|is\s+)?"
-    r"(?:set to\s+|expected to\s+)?(rise|increase|climb|surge|hike|drop|decrease|roll ?back|fall|decline|cut)\w*\s*"
-    r"(?:by\s+)?(?:up to\s+|more than\s+|about\s+)?P?([\d.]+)\s*(?:/|per\s*)liter",
+    r"(Diesel|Gasoline|Kerosene)\w*\s*(?:prices?\s*)?(?:,\s*[^,]*,\s*)?(?:may\s+|will\s+|are\s+|is\s+)?(?:be\s+)?"
+    r"(?:set to\s+|expected to\s+)?(rise|increase|climb|surge|hike|jump|spike|drop|decrease|roll ?back|fall|decline|cut|slash|reduce|lower|trim)\w*\s*"
+    r"(?:by\s+)?(?:up to\s+|more than\s+|about\s+)?[₱P]?([\d.]+)\s*(?:/|per\s*)liter",
     re.IGNORECASE
 )
 
-FUEL_UP_VERBS = {"rise", "increase", "climb", "surge", "hike"}
-FUEL_DOWN_VERBS = {"drop", "decrease", "rollback", "fall", "decline", "cut"}
+FUEL_UP_VERBS = {"rise", "increase", "climb", "surge", "hike", "jump", "spike"}
+FUEL_DOWN_VERBS = {"drop", "decrease", "rollback", "fall", "decline", "cut", "slash", "reduce", "lower", "trim"}
 
 def parse_specific_fuel_estimates(text):
     results = {}
