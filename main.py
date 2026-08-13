@@ -519,7 +519,7 @@ def build_currency_gold_image():
     save_current_prices(usd_rate, gold_price)
     return buffer, caption
 
-# ---------- Fuel Price Watch (DOE weekly advisory, via news coverage) ----------
+# ---------- Fuel Price Watch (specific per-liter estimates from DOE weekly advisory coverage) ----------
 
 FUEL_UP_WORDS = ["increase", "increases", "hike", "hikes", "rise", "rises", "up by", "climb", "climbs", "higher", "surge"]
 FUEL_DOWN_WORDS = ["decrease", "decreases", "rollback", "rollbacks", "cut", "cuts", "down by", "drop", "drops", "decline", "lower", "reduction"]
@@ -582,6 +582,115 @@ def find_fuel_article():
 
     return candidates[0] if candidates else None
 
+def fetch_full_article_text(url):
+    try:
+        response = requests.get(url, headers=FEED_HEADERS, timeout=10)
+        response.raise_for_status()
+        text = response.text
+        text = re.sub(r"<script.*?</script>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<style.*?</style>", " ", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = html_lib.unescape(text)
+        text = re.sub(r"\s+", " ", text).strip()
+        return text
+    except Exception as e:
+        print(f"  [fuel article fetch error] {url} -> {e}")
+        return ""
+
+# Matches recurring "range" format, e.g.:
+# "Diesel - may either go up by P0.84 or go down by P1.16 per liter"
+FUEL_RANGE_PATTERN = re.compile(
+    r"(Diesel|Gasoline|Kerosene)\s*[-–:]\s*may\s*(?:either\s*)?go\s*up\s*by\s*P?([\d.]+)\s*(?:per\s*liter\s*)?or\s*go\s*down\s*by\s*P?([\d.]+)\s*per\s*liter",
+    re.IGNORECASE
+)
+
+# Matches single-direction phrasing used by other outlets, e.g.:
+# "Diesel prices are set to rise by more than P2 per liter this week"
+# "gasoline prices may either increase or roll back by up to P1 per liter"
+FUEL_SINGLE_PATTERN = re.compile(
+    r"(Diesel|Gasoline|Kerosene)\w*\s+(?:prices?\s+)?(?:may\s+|will\s+|are\s+|is\s+)?"
+    r"(?:set to\s+|expected to\s+)?(rise|increase|climb|surge|hike|drop|decrease|roll ?back|fall|decline|cut)\w*\s*"
+    r"(?:by\s+)?(?:up to\s+|more than\s+|about\s+)?P?([\d.]+)\s*(?:/|per\s*)liter",
+    re.IGNORECASE
+)
+
+FUEL_UP_VERBS = {"rise", "increase", "climb", "surge", "hike"}
+FUEL_DOWN_VERBS = {"drop", "decrease", "rollback", "fall", "decline", "cut"}
+
+def parse_specific_fuel_estimates(text):
+    results = {}
+
+    for match in FUEL_RANGE_PATTERN.finditer(text):
+        fuel = match.group(1).capitalize()
+        results[fuel] = {
+            "up": float(match.group(2)),
+            "down": float(match.group(3)),
+            "single": False
+        }
+
+    for match in FUEL_SINGLE_PATTERN.finditer(text):
+        fuel = match.group(1).capitalize()
+        if fuel in results:
+            continue
+        verb = match.group(2).lower().replace(" ", "")
+        amount = float(match.group(3))
+        if verb in FUEL_UP_VERBS:
+            results[fuel] = {"up": amount, "down": 0.0, "single": True, "direction": "up"}
+        elif verb in FUEL_DOWN_VERBS:
+            results[fuel] = {"up": 0.0, "down": amount, "single": True, "direction": "down"}
+
+    return results
+
+def get_fuel_estimates():
+    """Scan all fuel-related sources this week and merge whatever specific
+    per-liter figures we can find. Falls back to qualitative direction if
+    nothing specific turns up anywhere."""
+    combined = {}
+    source_used = None
+    link_used = ""
+
+    for name, url in FUEL_SOURCES.items():
+        articles = get_articles_from_feed(url, limit=20)
+        for article in articles:
+            if not is_fuel_article(article):
+                continue
+
+            source_text = article["description"]
+            if article.get("link"):
+                fetched = fetch_full_article_text(article["link"])
+                if fetched:
+                    source_text = fetched
+
+            estimates = parse_specific_fuel_estimates(source_text)
+            if estimates:
+                print(f"  [fuel scan] {name}: found specific figures for {list(estimates.keys())}")
+                for fuel, val in estimates.items():
+                    if fuel not in combined:
+                        combined[fuel] = val
+                        if source_used is None:
+                            source_used = name
+                            link_used = article.get("link", "")
+
+            if len(combined) == 3:
+                break
+        if len(combined) == 3:
+            break
+
+    if combined:
+        print(f"  [fuel scan] final combined estimates: {combined} (primary source: {source_used})")
+        article_info = {"source": source_used or "Multiple sources", "link": link_used}
+        return combined, article_info
+
+    print("  [fuel scan] no specific per-liter estimates found from any source, falling back to general article")
+    fallback = find_fuel_article()
+    return {}, fallback
+
+FUEL_COLORS = {
+    "Diesel": "#4caf50",
+    "Gasoline": "#e05252",
+    "Kerosene": "#e0c14c"
+}
+
 FUEL_STYLE = {
     "up": {
         "color": "#e05252", "arrow": "▲", "badge": "FORECAST: PRICES RISING",
@@ -601,21 +710,119 @@ FUEL_STYLE = {
     }
 }
 
-
 def build_fuel_html():
-    article = find_fuel_article()
+    estimates, article = get_fuel_estimates()
     today = datetime.now().strftime("%B %d, %Y")
+    source_label = article["source"] if article else ""
+    link = article.get("link", "") if article else ""
 
+    if estimates:
+        rows_html = ""
+        for fuel_name in ["Diesel", "Gasoline", "Kerosene"]:
+            if fuel_name not in estimates:
+                continue
+            data = estimates[fuel_name]
+            up_amt = data["up"]
+            down_amt = data["down"]
+            color = FUEL_COLORS[fuel_name]
+            is_single = data.get("single", False)
+
+            if is_single:
+                if data["direction"] == "up":
+                    values_html = f'<div class="rangeline"><span class="up">▲ up by ₱{up_amt:.2f}</span></div>'
+                    arrow = "▲"
+                else:
+                    values_html = f'<div class="rangeline"><span class="down">▼ down by ₱{down_amt:.2f}</span></div>'
+                    arrow = "▼"
+            else:
+                values_html = (
+                    f'<div class="rangeline"><span class="up">▲ up to ₱{up_amt:.2f}</span></div>'
+                    f'<div class="rangeline"><span class="down">▼ down to ₱{down_amt:.2f}</span></div>'
+                )
+                arrow = "▲" if up_amt >= down_amt else "▼"
+
+            rows_html += f"""
+      <div class="row">
+        <div class="rowlabel" style="background:{color};">{fuel_name}</div>
+        <div class="rowvalues">
+          {values_html}
+        </div>
+        <div class="rowarrow" style="color:{color};">{arrow}</div>
+      </div>"""
+
+        headline = "This week's DOE-advised range per liter"
+        html_out = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#171310; position:relative; overflow:hidden; }}
+
+  .bg {{
+    position:absolute; inset:0;
+    background: linear-gradient(160deg, #14100d 0%, #1e1712 60%, #241b14 100%);
+  }}
+
+  .content {{ position:relative; z-index:2; padding:70px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+
+  .eyebrow {{ color:#c9a15a; font-size:20px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:52px; line-height:1.05; margin-top:14px; }}
+  .date {{ color:#a9a09c; font-size:22px; margin-top:14px; font-weight:500; }}
+  .subhead {{ color:#d8d2c6; font-size:22px; margin-top:24px; }}
+
+  .rows {{ margin-top:36px; display:flex; flex-direction:column; gap:22px; }}
+  .row {{
+    display:flex; align-items:center; gap:20px; background:rgba(247,242,227,0.04);
+    border:1px solid rgba(247,242,227,0.14); border-radius:18px; padding:26px 30px;
+  }}
+  .rowlabel {{
+    color:#171310; font-weight:800; font-size:24px; padding:14px 22px; border-radius:10px;
+    min-width:170px; text-align:center;
+  }}
+  .rowvalues {{ flex:1; display:flex; flex-direction:column; gap:6px; }}
+  .rangeline {{ font-size:24px; font-weight:700; }}
+  .up {{ color:#e05252; }}
+  .down {{ color:#4caf50; }}
+  .rowarrow {{ font-size:44px; font-weight:800; }}
+
+  .note {{ margin-top:34px; color:#a9a09c; font-size:19px; line-height:1.5; }}
+
+  .footer {{ margin-top:auto; padding-top:40px; display:flex; justify-content:space-between; align-items:flex-end; }}
+  .brand {{ color:#8a8078; font-size:20px; font-weight:700; letter-spacing:2px; }}
+  .tag {{ color:#c9a15a; font-size:18px; font-weight:600; }}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="content">
+    <div class="eyebrow">Benguet Daily Update</div>
+    <div class="title">Fuel Price Forecast</div>
+    <div class="date">{today}</div>
+    <div class="subhead">{headline}</div>
+
+    <div class="rows">{rows_html}
+    </div>
+
+    <div class="note">Ranges reflect this week's DOE advisory ahead of the next Tuesday adjustment — actual pump prices may vary by station and region.</div>
+
+    <div class="footer">
+      <div class="brand">BENGUET DAILY UPDATE</div>
+      <div class="tag">Source: {source_label if source_label else "—"}</div>
+    </div>
+  </div>
+</body>
+</html>"""
+        return html_out, "specific", estimates, link, source_label
+
+    # Fallback: no specific numbers found, use qualitative direction
     if article:
         direction = classify_fuel_direction(article)
         headline = article["title"]
-        source_label = article["source"]
-        link = article.get("link", "")
     else:
         direction = "unknown"
         headline = "No fuel price advisory found this week"
-        source_label = ""
-        link = ""
 
     style = FUEL_STYLE[direction]
 
@@ -683,7 +890,25 @@ def build_fuel_html():
 </html>"""
     return html_out, direction, headline, link, source_label
 
-def build_fuel_caption(direction, headline, link, source_label):
+def build_fuel_specific_caption(estimates, link, source_label):
+    lines = ["⛽ This week's fuel price forecast (per liter):"]
+    for fuel_name in ["Diesel", "Gasoline", "Kerosene"]:
+        if fuel_name in estimates:
+            data = estimates[fuel_name]
+            if data.get("single", False):
+                if data["direction"] == "up":
+                    lines.append(f"{fuel_name}: up by ▲₱{data['up']:.2f}")
+                else:
+                    lines.append(f"{fuel_name}: down by ▼₱{data['down']:.2f}")
+            else:
+                lines.append(f"{fuel_name}: up to ▲₱{data['up']:.2f} or down to ▼₱{data['down']:.2f}")
+    if source_label:
+        lines.append(f"Source: {source_label}")
+    if link:
+        lines.append(link)
+    return "\n".join(lines)
+
+def build_fuel_caption_fallback(direction, headline, link, source_label):
     style = FUEL_STYLE[direction]
     lines = [f"⛽ {style['badge']}: {headline}"]
     if source_label:
@@ -695,9 +920,12 @@ def build_fuel_caption(direction, headline, link, source_label):
     return "\n".join(lines)
 
 def build_fuel_image():
-    html_out, direction, headline, link, source_label = build_fuel_html()
+    html_out, mode, data, link, source_label = build_fuel_html()
     buffer = render_html_to_png(html_out)
-    caption = build_fuel_caption(direction, headline, link, source_label)
+    if mode == "specific":
+        caption = build_fuel_specific_caption(data, link, source_label)
+    else:
+        caption = build_fuel_caption_fallback(mode, data, link, source_label)
     return buffer, caption
 
 # ---------- News (HTML/Playwright narrative-style) ----------
