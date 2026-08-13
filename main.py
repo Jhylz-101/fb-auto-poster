@@ -1324,11 +1324,34 @@ def build_flash_news_html(article, badge_label="BREAKING"):
 </html>"""
     return html_out
 
+def build_diversified_top3(articles):
+    """Ensures the daily digest isn't entirely dominated by one hyperlocal
+    source — guarantees at least one local story AND at least one genuine
+    national headline get a slot, instead of pure local-first sorting
+    filling all 3 with the same source."""
+    if not articles:
+        return []
+
+    local_articles = [a for a in articles if is_local_article(a)]
+    national_articles = [a for a in articles if not is_local_article(a)]
+
+    top3 = []
+    if local_articles:
+        top3.append(local_articles[0])
+    if national_articles:
+        top3.append(national_articles[0])
+
+    remaining_pool = [a for a in articles if a not in top3]
+    while len(top3) < 3 and remaining_pool:
+        top3.append(remaining_pool.pop(0))
+
+    return top3[:3]
+
 def build_news_caption(articles):
     if not articles:
         return "No headlines available today."
 
-    top3 = articles[:3]
+    top3 = build_diversified_top3(articles)
     lines = ["📰 Today's top stories:"]
     for i, a in enumerate(top3, start=1):
         lines.append(f"{i}. {a['title']}")
@@ -1340,7 +1363,8 @@ def build_news_caption(articles):
 
 def build_news_image():
     articles = gather_news()
-    html_out = build_news_html(articles)
+    top3 = build_diversified_top3(articles)
+    html_out = build_news_html(top3)
     buffer = render_html_to_png(html_out)
     caption = build_news_caption(articles)
     return buffer, caption
