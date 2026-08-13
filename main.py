@@ -4,6 +4,7 @@ import json
 import random
 import re
 import os
+import base64
 import html as html_lib
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw, ImageFont
@@ -237,6 +238,12 @@ def generate_background(prompt, height=1080):
     response = requests.get(url)
     img = Image.open(BytesIO(response.content)).convert("RGB")
     return img
+
+def image_to_data_uri(img, quality=85):
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=quality)
+    b64_str = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{b64_str}"
 
 def section_badge(draw, badge_font, x, y, text, color):
     bbox = draw.textbbox((0, 0), text, font=badge_font)
@@ -1425,6 +1432,18 @@ def extract_reason(window_text):
             return keyword
     return None
 
+LOCATION_PATTERN = re.compile(
+    r"at\s+([A-Z][a-zA-Z\u00f1\u00d1'.\- ]{2,30}?)\s+in\s+([A-Z][a-zA-Z\u00f1\u00d1'.\- ]{2,30}?)[,\.]",
+)
+
+def extract_location(window_text):
+    match = LOCATION_PATTERN.search(window_text)
+    if match:
+        place = match.group(1).strip()
+        town = match.group(2).strip()
+        return f"{place}, {town}"
+    return None
+
 def extract_road_statuses(text):
     results = {}
     text_lower = text.lower()
@@ -1443,7 +1462,8 @@ def extract_road_statuses(text):
         if status:
             results[road] = {
                 "status": status,
-                "reason": extract_reason(window)
+                "reason": extract_reason(window),
+                "location": extract_location(window)
             }
     return results
 
@@ -1475,8 +1495,8 @@ def normalize_road_info(info):
     return {"status": info, "reason": None}
 
 def build_road_narrative(statuses):
-    """Builds narrative sentences from extracted facts (road, status, reason)
-    in our own wording — not copied from the source article."""
+    """Builds narrative sentences from extracted facts (road, status, reason,
+    location) in our own wording — not copied from the source article."""
     if not statuses:
         return ""
 
@@ -1485,8 +1505,12 @@ def build_road_narrative(statuses):
         info = normalize_road_info(raw_info)
         status_phrase = STATUS_PHRASES.get(info["status"], "affected by current conditions")
         reason = info.get("reason")
+        location = info.get("location")
+
+        location_phrase = f" near {location}" if location else ""
         reason_phrase = f", due to {REASON_PHRASES.get(reason, reason)}" if reason else ""
-        sentences.append(f"{road} is {status_phrase}{reason_phrase}.")
+
+        sentences.append(f"{road} is {status_phrase}{location_phrase}{reason_phrase}.")
 
     return " ".join(sentences)
 
@@ -1556,10 +1580,29 @@ def get_road_status(report_is_new=False):
     save_road_state(state)
     return (new_current, True) if report_is_new else new_current
 
+def road_background_prompt(status):
+    statuses = (status or {}).get("statuses", {})
+    has_closed = any(
+        normalize_road_info(v)["status"] == "closed" for v in statuses.values()
+    ) if statuses else False
+
+    if has_closed:
+        return "rainy misty mountain highway, landslide warning, wet asphalt cliffside road, moody grey clouds, dramatic atmosphere, minimalist"
+    return "scenic misty mountain highway, pine forest cliffside road, soft overcast light, minimalist"
+
 def build_road_html(status=None):
     if status is None:
         status = get_road_status()
     today = datetime.now().strftime("%B %d, %Y")
+
+    try:
+        bg_prompt = road_background_prompt(status)
+        bg_img = generate_background(bg_prompt, height=1350)
+        bg_data_uri = image_to_data_uri(bg_img)
+        bg_style = f"background-image:url('{bg_data_uri}'); background-size:cover; background-position:center;"
+    except Exception as e:
+        print(f"  [road bg] could not generate background image, using fallback: {e}")
+        bg_style = ""
 
     if not status or not status.get("statuses"):
         rows_html = ""
@@ -1588,7 +1631,8 @@ def build_road_html(status=None):
   * {{ margin:0; padding:0; box-sizing:border-box; }}
   body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#14181c; position:relative; overflow:hidden; }}
 
-  .bg {{ position:absolute; inset:0; background: linear-gradient(160deg, #10141a 0%, #161c22 60%, #1c2530 100%); }}
+  .bg {{ position:absolute; inset:0; {bg_style} background-color:#14181c; }}
+  .overlay {{ position:absolute; inset:0; background: linear-gradient(160deg, rgba(16,20,26,0.72) 0%, rgba(22,28,34,0.78) 60%, rgba(28,37,48,0.85) 100%); }}
 
   .content {{ position:relative; z-index:2; padding:76px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
 
@@ -1620,6 +1664,7 @@ def build_road_html(status=None):
 </head>
 <body>
   <div class="bg"></div>
+  <div class="overlay"></div>
   <div class="content">
     <div class="eyebrow">Benguet Daily Update</div>
     <div class="title">Road Status Watch</div>
