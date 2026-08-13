@@ -541,7 +541,6 @@ def is_fuel_article(article):
         or ("doe" in text and any(w in text for w in ["fuel", "oil", "diesel", "gasoline", "kerosene"]))
     )
 
-    # Still exclude corporate/earnings stories that just mention fuel as a cost factor
     is_corporate_story = any(w in text for w in [
         "profit", "earnings", "revenue", "net income", "quarter", " q1 ", " q2 ",
         " q3 ", " q4 ", "airline", "eps", "stock", "shares", "ipo",
@@ -549,6 +548,26 @@ def is_fuel_article(article):
     ])
 
     return has_fuel_topic and not is_corporate_story
+
+def is_fuel_article_strong(article):
+    """Stricter check for articles likely to contain actual per-liter pump
+    price figures, as opposed to vague crude-market commentary like
+    'oil prices inch up amid Hormuz talks' which mentions 'oil price' but
+    has no consumer-facing numbers at all."""
+    text = (article["title"] + " " + article["description"]).lower()
+
+    has_strong_signal = (
+        "per liter" in text or "/liter" in text or "pump price" in text
+        or "price tracker: oil" in text or "oil monitor" in text or "price watch" in text
+    )
+
+    is_corporate_story = any(w in text for w in [
+        "profit", "earnings", "revenue", "net income", "quarter", " q1 ", " q2 ",
+        " q3 ", " q4 ", "airline", "eps", "stock", "shares", "ipo",
+        "merger", "acquisition", " ceo ", " cfo "
+    ])
+
+    return has_strong_signal and not is_corporate_story
 
 def classify_fuel_direction(article):
     text = (article["title"] + " " + article["description"]).lower()
@@ -689,7 +708,7 @@ def get_fuel_estimates():
     for name, url in FUEL_SOURCES.items():
         articles = get_articles_from_feed(url, limit=20)
         for article in articles:
-            if not is_fuel_article(article):
+            if not is_fuel_article_strong(article):
                 continue
 
             # Try the fast RSS description first — no extra network call
@@ -722,9 +741,8 @@ def get_fuel_estimates():
         article_info = {"source": source_used or "Multiple sources", "link": link_used}
         return combined, article_info
 
-    print("  [fuel scan] no specific per-liter estimates found from any source this run")
-    fallback = find_fuel_article()
-    return {}, fallback
+    print("  [fuel scan] no specific per-liter estimates found from any source this run — not falling back to vague commentary")
+    return {}, None
 
 def get_fuel_status():
     """Combines fresh scanning with persisted state: if this run finds a
