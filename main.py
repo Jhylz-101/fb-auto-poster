@@ -1251,24 +1251,16 @@ def build_news_html(articles):
 
 def build_flash_news_html(article, badge_label="BREAKING"):
     """Single-headline layout for the 15-min flash watcher — distinct from
-    the 3-card daily digest, and posts immediately with no padding/filler."""
+    the 3-card daily digest, and posts immediately with no padding/filler.
+    Height grows to fit the content instead of forcing everything into a
+    fixed frame, so text can stay large and readable."""
     today = datetime.now().strftime("%B %d, %Y")
 
     title = article["title"]
     description = article.get("description", "")
     source_label = article.get("source") or "Wire"
 
-    snippet = truncate_text(description, max_len=280) if description else "Full details available from the source below."
-
-    title_len = len(title)
-    scale = 1.0
-    if title_len > 100:
-        scale = 0.82
-    elif title_len > 70:
-        scale = 0.90
-
-    headline_size = round(46 * scale)
-    snippet_size = round(26 * scale)
+    snippet = truncate_text(description, max_len=320) if description else "Full details available from the source below."
 
     html_out = f"""<!DOCTYPE html>
 <html>
@@ -1277,33 +1269,33 @@ def build_flash_news_html(article, badge_label="BREAKING"):
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#141414; position:relative; overflow:hidden; }}
+  body {{ width:1080px; min-height:900px; font-family:'Archivo',sans-serif; background:#141414; position:relative; }}
 
   .bg {{ position:absolute; inset:0; background: linear-gradient(180deg, #0d0d0d 0%, #1a1414 55%, #241412 100%); }}
   .texture {{ position:absolute; inset:0; opacity:0.06; background-image: repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px); }}
 
-  .content {{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; justify-content:center; padding:80px 70px; }}
+  .content {{ position:relative; z-index:2; padding:80px 70px; padding-bottom:60px; }}
 
-  .topbar {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:40px; }}
-  .brand {{ color:#8a8078; font-size:20px; font-weight:700; letter-spacing:2px; }}
-  .date {{ color:#9a9a9a; font-size:19px; }}
+  .topbar {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:44px; }}
+  .brand {{ color:#a8a098; font-size:22px; font-weight:700; letter-spacing:2px; }}
+  .date {{ color:#b0b0b0; font-size:21px; }}
 
   .badge {{
-    align-self:flex-start; background:#b02e26; color:#fff; font-weight:800; font-size:24px;
-    letter-spacing:3px; padding:14px 30px; text-transform:uppercase; margin-bottom:36px;
+    align-self:flex-start; background:#b02e26; color:#fff; font-weight:800; font-size:27px;
+    letter-spacing:3px; padding:16px 34px; text-transform:uppercase; margin-bottom:42px; display:inline-block;
   }}
 
   .headline {{
-    font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:{headline_size}px; line-height:1.15;
+    font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:58px; line-height:1.18;
   }}
 
-  .rule {{ height:2px; background:#3a3a3a; margin:40px 0; }}
+  .rule {{ height:2px; background:#3a3a3a; margin:46px 0; }}
 
-  .snippet {{ color:#d8d2c6; font-size:{snippet_size}px; line-height:1.55; }}
+  .snippet {{ color:#e3ded3; font-size:32px; line-height:1.6; }}
 
-  .footer {{ margin-top:auto; display:flex; justify-content:space-between; align-items:center; padding-top:40px; border-top:1px solid #3a3a3a; }}
-  .source {{ color:#8a8a8a; font-size:19px; }}
-  .cta {{ color:#f0a97a; font-size:19px; font-weight:700; }}
+  .footer {{ margin-top:56px; display:flex; justify-content:space-between; align-items:center; padding-top:40px; border-top:1px solid #3a3a3a; }}
+  .source {{ color:#a8a098; font-size:22px; }}
+  .cta {{ color:#f0a97a; font-size:22px; font-weight:700; }}
 </style>
 </head>
 <body>
