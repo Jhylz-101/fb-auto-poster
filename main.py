@@ -53,13 +53,21 @@ def get_weather_line(data, city):
 
 def get_forex_rate():
     url = f"https://v6.exchangerate-api.com/v6/{EXCHANGE_API_KEY}/latest/USD"
-    data = requests.get(url).json()
+    response = requests.get(url)
+    data = response.json()
+    if "conversion_rates" not in data:
+        print(f"  [forex error] unexpected response: {data}")
+        raise RuntimeError(f"ExchangeRate-API did not return conversion_rates: {data}")
     return data["conversion_rates"]["PHP"]
 
 def get_gold_price():
     url = "https://www.goldapi.io/api/XAU/PHP"
     headers = {"x-access-token": GOLD_API_KEY}
-    data = requests.get(url, headers=headers).json()
+    response = requests.get(url, headers=headers)
+    data = response.json()
+    if "price_gram_24k" not in data:
+        print(f"  [gold error] unexpected response (status {response.status_code}): {data}")
+        raise RuntimeError(f"GoldAPI did not return price_gram_24k: {data}")
     return data["price_gram_24k"]
 
 PRICE_HISTORY_FILE = "/data/price_history.json"
@@ -1371,21 +1379,33 @@ def seed_fuel_state_if_empty():
 if __name__ == "__main__":
     seed_fuel_state_if_empty()
 
-    weather_img, weather_caption = build_weather_image()
-    send_photo_for_approval(weather_img, "weather", filename="update.png", mime="image/png", caption=weather_caption)
-    print("Sent weather post")
+    try:
+        weather_img, weather_caption = build_weather_image()
+        send_photo_for_approval(weather_img, "weather", filename="update.png", mime="image/png", caption=weather_caption)
+        print("Sent weather post")
+    except Exception as e:
+        print(f"  [ERROR] weather post failed, skipping: {e}")
     time.sleep(2)
 
-    currency_img, currency_caption = build_currency_gold_image()
-    send_photo_for_approval(currency_img, "currency", filename="update.png", mime="image/png", caption=currency_caption)
-    print("Sent currency/gold post")
+    try:
+        currency_img, currency_caption = build_currency_gold_image()
+        send_photo_for_approval(currency_img, "currency", filename="update.png", mime="image/png", caption=currency_caption)
+        print("Sent currency/gold post")
+    except Exception as e:
+        print(f"  [ERROR] currency/gold post failed, skipping: {e}")
     time.sleep(2)
 
-    news_img, news_caption = build_news_image()
-    send_photo_for_approval(news_img, "news", filename="update.png", mime="image/png", caption=news_caption)
-    print("Sent news post")
+    try:
+        news_img, news_caption = build_news_image()
+        send_photo_for_approval(news_img, "news", filename="update.png", mime="image/png", caption=news_caption)
+        print("Sent news post")
+    except Exception as e:
+        print(f"  [ERROR] news post failed, skipping: {e}")
     time.sleep(2)
 
-    fuel_img, fuel_caption = build_fuel_image()
-    send_photo_for_approval(fuel_img, "fuel", filename="update.png", mime="image/png", caption=fuel_caption)
-    print("Sent fuel price watch post")
+    try:
+        fuel_img, fuel_caption = build_fuel_image()
+        send_photo_for_approval(fuel_img, "fuel", filename="update.png", mime="image/png", caption=fuel_caption)
+        print("Sent fuel price watch post")
+    except Exception as e:
+        print(f"  [ERROR] fuel post failed, skipping: {e}")
