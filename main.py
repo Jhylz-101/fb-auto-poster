@@ -1529,8 +1529,10 @@ def find_road_article():
     for name, url in ROAD_SOURCES.items():
         articles = get_articles_from_feed(url, limit=20)
         print(f"  [road scan] {name}: {len(articles)} articles fetched")
-        for article in articles:
-            if is_road_article(article):
+        for i, article in enumerate(articles):
+            matched = is_road_article(article)
+            print(f"    [road scan #{i}] {'MATCH' if matched else 'skip '} — {article['title'][:80]}")
+            if matched:
                 article["source"] = name
                 return article
     return None
