@@ -1379,12 +1379,6 @@ def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="im
             {"text": "Reject", "callback_data": f"reject_{label}"}
         ]]
     }
-
-    # Save a copy for Facebook posting later, before Telegram's upload
-    # consumes the buffer.
-    image_bytes = image_buffer.getvalue()
-    save_pending_post(label, image_bytes, caption)
-
     files = {"photo": (filename, image_buffer, mime)}
     data = {
         "chat_id": CHAT_ID,
@@ -1401,52 +1395,31 @@ def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="im
         print(f"  [telegram] '{label}' delivered OK")
     return result
 
-# ---------- Facebook posting (pending queue + approval handling) ----------
-
-PENDING_DIR = "/data/pending"
+# ---------- Facebook posting (fetches the approved image directly from
+# Telegram, so it works regardless of which service/volume handles the
+# approval check — no shared local storage needed) ----------
 
 FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN", "")
 FB_PAGE_ID = os.environ.get("FB_PAGE_ID", "")
 
-def save_pending_post(label, image_bytes, caption):
-    """Saves the image + caption to persistent storage under this label,
-    so a later approval check (which runs in a separate process/service)
-    can retrieve and actually post it to Facebook."""
+def get_telegram_file_bytes(file_id):
+    """Downloads the actual image bytes for a Telegram file_id, using
+    Telegram's own storage as the source of truth."""
     try:
-        os.makedirs(PENDING_DIR, exist_ok=True)
-        img_path = os.path.join(PENDING_DIR, f"{label}.png")
-        with open(img_path, "wb") as f:
-            f.write(image_bytes)
-        meta_path = os.path.join(PENDING_DIR, f"{label}.json")
-        with open(meta_path, "w") as f:
-            json.dump({"caption": caption or ""}, f)
+        file_info = requests.get(
+            f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",
+            params={"file_id": file_id}, timeout=15
+        ).json()
+        if not file_info.get("ok"):
+            print(f"  [telegram file] getFile failed: {file_info}")
+            return None
+        file_path = file_info["result"]["file_path"]
+        file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
+        response = requests.get(file_url, timeout=30)
+        return response.content
     except Exception as e:
-        print(f"  [pending] could not save pending post for '{label}': {e}")
-
-def load_pending_post(label):
-    img_path = os.path.join(PENDING_DIR, f"{label}.png")
-    meta_path = os.path.join(PENDING_DIR, f"{label}.json")
-    if not os.path.exists(img_path) or not os.path.exists(meta_path):
+        print(f"  [telegram file] could not download: {e}")
         return None
-    try:
-        with open(img_path, "rb") as f:
-            image_bytes = f.read()
-        with open(meta_path, "r") as f:
-            meta = json.load(f)
-        return {"image_bytes": image_bytes, "caption": meta.get("caption", "")}
-    except Exception as e:
-        print(f"  [pending] could not load pending post for '{label}': {e}")
-        return None
-
-def clear_pending_post(label):
-    img_path = os.path.join(PENDING_DIR, f"{label}.png")
-    meta_path = os.path.join(PENDING_DIR, f"{label}.json")
-    for path in (img_path, meta_path):
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except Exception as e:
-                print(f"  [pending] could not remove {path}: {e}")
 
 def post_to_facebook(image_bytes, caption):
     """Publishes a photo + caption to the configured Facebook Page."""
@@ -1544,14 +1517,27 @@ def process_telegram_approvals():
         try:
             if data.startswith("approve_"):
                 label = data[len("approve_"):]
-                pending = load_pending_post(label)
-                if not pending:
-                    print(f"  [approvals] approve for '{label}' but no pending post found (already handled or expired)")
-                    answer_callback_query(callback_id, "Already handled or expired")
+                message = callback.get("message", {})
+                photos = message.get("photo", [])
+                caption = message.get("caption", "")
+
+                if not photos:
+                    print(f"  [approvals] approve for '{label}' but the original message has no photo attached")
+                    answer_callback_query(callback_id, "No photo found on this message")
+                    continue
+
+                # Telegram sends multiple resolutions, smallest to largest —
+                # take the largest for best quality.
+                largest_photo = photos[-1]
+                image_bytes = get_telegram_file_bytes(largest_photo["file_id"])
+
+                if not image_bytes:
+                    print(f"  [approvals] approve for '{label}' but could not download the image from Telegram")
+                    answer_callback_query(callback_id, "Could not download image — check logs")
                     continue
 
                 print(f"  [approvals] approving '{label}' — posting to Facebook")
-                result = post_to_facebook(pending["image_bytes"], pending["caption"])
+                result = post_to_facebook(image_bytes, caption)
                 if result.get("id") or result.get("post_id"):
                     print(f"  [approvals] '{label}' posted to Facebook successfully: {result}")
                     answer_callback_query(callback_id, "Posted to Facebook!")
@@ -1565,13 +1551,11 @@ def process_telegram_approvals():
                     else:
                         error_text = str(error_info)
                     send_text_message(f"⚠️ '{label}' approved but Facebook post failed: {error_text}")
-                clear_pending_post(label)
 
             elif data.startswith("reject_"):
                 label = data[len("reject_"):]
                 print(f"  [approvals] '{label}' rejected, discarding")
                 answer_callback_query(callback_id, "Rejected — discarded")
-                clear_pending_post(label)
         except Exception as e:
             # Never let a single bad update block the offset from advancing —
             # otherwise this update gets retried forever on every future run.
