@@ -2,7 +2,7 @@ import json
 import os
 from main import (
     gather_news, is_local_article, build_flash_news_html,
-    render_html_to_png, render_html_to_png_dynamic, send_photo_for_approval,
+    render_html_to_png_dynamic, send_photo_for_approval,
     get_road_status, build_road_html, build_road_caption
 )
 
@@ -44,7 +44,7 @@ def save_national_state(state):
 
 def send_flash(label, article, badge_label):
     html_out = build_flash_news_html(article, badge_label=badge_label)
-    img_buffer = render_html_to_png(html_out)
+    img_buffer = render_html_to_png_dynamic(html_out)
 
     caption = f"{'🚨' if label == 'news_flash' else '📰'} {article['title']}"
     if article.get("link"):
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     else:
         top = local_new[0]
         print(f"New local story found: {top['title']} ({top['source']})")
-        send_flash("news_flash", top, "LOCAL BREAKING")
+        send_flash("news_flash", top, "LOCAL BREAKING NEWS")
         print("Sent local flash update for approval")
         seen.add(top["link"])
 
