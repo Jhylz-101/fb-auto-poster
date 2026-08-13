@@ -8,7 +8,7 @@ import html as html_lib
 import xml.etree.ElementTree as ET
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import Counter
 from playwright.sync_api import sync_playwright
 
@@ -507,6 +507,169 @@ def build_currency_gold_image():
     save_current_prices(usd_rate, gold_price)
     return buffer, caption
 
+# ---------- Fuel Price Watch (DOE weekly advisory, via news coverage) ----------
+
+FUEL_UP_WORDS = ["increase", "increases", "hike", "hikes", "rise", "rises", "up by", "climb", "climbs", "higher", "surge"]
+FUEL_DOWN_WORDS = ["decrease", "decreases", "rollback", "rollbacks", "cut", "cuts", "down by", "drop", "drops", "decline", "lower", "reduction"]
+FUEL_MIXED_WORDS = ["either", "may rise or fall", "may go up or down", "may increase or decrease"]
+
+def is_fuel_article(article):
+    text = (article["title"] + " " + article["description"]).lower()
+    has_fuel_topic = (
+        "fuel price" in text or "oil price" in text or "pump price" in text
+        or "price tracker: oil" in text or "oil monitor" in text
+        or ("diesel" in text and "price" in text)
+        or ("gasoline" in text and "price" in text)
+    )
+    return has_fuel_topic
+
+def classify_fuel_direction(article):
+    text = (article["title"] + " " + article["description"]).lower()
+
+    if any(phrase in text for phrase in FUEL_MIXED_WORDS):
+        return "mixed"
+
+    has_up = any(word in text for word in FUEL_UP_WORDS)
+    has_down = any(word in text for word in FUEL_DOWN_WORDS)
+
+    if has_up and has_down:
+        return "mixed"
+    elif has_up:
+        return "up"
+    elif has_down:
+        return "down"
+    else:
+        return "unknown"
+
+def find_fuel_article():
+    candidates = []
+    for name, url in NEWS_SOURCES.items():
+        if name in ("PNA", "NorDis"):
+            continue
+        for article in get_articles_from_feed(url, limit=20):
+            article["source"] = name
+            if is_fuel_article(article):
+                candidates.append(article)
+    return candidates[0] if candidates else None
+
+FUEL_STYLE = {
+    "up": {
+        "color": "#e05252", "arrow": "▲", "badge": "FORECAST: PRICES RISING",
+        "advice": "This week's DOE advisory points to higher pump prices at the next adjustment. Fill up before Tuesday to lock in today's rate."
+    },
+    "down": {
+        "color": "#4caf50", "arrow": "▼", "badge": "FORECAST: ROLLBACK",
+        "advice": "This week's DOE advisory points to a rollback at the next adjustment. If you can wait, filling up after the drop saves you money."
+    },
+    "mixed": {
+        "color": "#e0c14c", "arrow": "→", "badge": "FORECAST: MIXED",
+        "advice": "Fuel types are pointing in different directions this week — check which one applies to your vehicle before deciding when to fill up."
+    },
+    "unknown": {
+        "color": "#9a9a9a", "arrow": "•", "badge": "NO FORECAST YET",
+        "advice": "No DOE advisory found in today's coverage yet — this updates automatically once the weekly report is published, usually Monday evening."
+    }
+}
+
+
+def build_fuel_html():
+    article = find_fuel_article()
+    today = datetime.now().strftime("%B %d, %Y")
+
+    if article:
+        direction = classify_fuel_direction(article)
+        headline = article["title"]
+        source_label = article["source"]
+        link = article.get("link", "")
+    else:
+        direction = "unknown"
+        headline = "No fuel price advisory found this week"
+        source_label = ""
+        link = ""
+
+    style = FUEL_STYLE[direction]
+
+    html_out = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#171310; position:relative; overflow:hidden; }}
+
+  .bg {{
+    position:absolute; inset:0;
+    background:
+      radial-gradient(circle at 85% 10%, {style["color"]}22, transparent 45%),
+      linear-gradient(160deg, #14100d 0%, #1e1712 60%, #241b14 100%);
+  }}
+
+  .content {{ position:relative; z-index:2; padding:76px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+
+  .eyebrow {{ color:#c9a15a; font-size:22px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:58px; line-height:1.05; margin-top:14px; }}
+  .date {{ color:#a9a09c; font-size:24px; margin-top:14px; font-weight:500; }}
+
+  .badge {{
+    margin-top:44px; align-self:flex-start;
+    background:{style["color"]}; color:#171310; font-weight:800; font-size:24px; letter-spacing:2px;
+    padding:14px 28px; border-radius:8px; display:flex; align-items:center; gap:12px;
+  }}
+  .badge .arrow {{ font-size:26px; }}
+
+  .headline {{ margin-top:40px; color:#f0ece5; font-size:32px; line-height:1.4; font-weight:600; }}
+
+  .advice {{
+    margin-top:36px; background:rgba(247,242,227,0.05); border:1px solid {style["color"]}55;
+    border-radius:18px; padding:34px 38px; color:#d8d2c6; font-size:24px; line-height:1.55;
+  }}
+  .advice b {{ color:{style["color"]}; }}
+
+  .footer {{ margin-top:60px; display:flex; justify-content:space-between; align-items:flex-end; }}
+  .brand {{ color:#8a8078; font-size:22px; font-weight:700; letter-spacing:2px; }}
+  .tag {{ color:{style["color"]}; font-size:20px; font-weight:600; }}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="content">
+    <div class="eyebrow">Benguet Daily Update</div>
+    <div class="title">Fuel Price Watch</div>
+    <div class="date">{today}</div>
+
+    <div class="badge"><span class="arrow">{style["arrow"]}</span> {style["badge"]}</div>
+
+    <div class="headline">{headline}</div>
+
+    <div class="advice">{style["advice"]}</div>
+
+    <div class="footer">
+      <div class="brand">BENGUET DAILY UPDATE</div>
+      <div class="tag">Source: {source_label if source_label else "—"}</div>
+    </div>
+  </div>
+</body>
+</html>"""
+    return html_out, direction, headline, link, source_label
+
+def build_fuel_caption(direction, headline, link, source_label):
+    style = FUEL_STYLE[direction]
+    lines = [f"⛽ {style['badge']}: {headline}"]
+    if source_label:
+        lines[0] += f" ({source_label})"
+    if link:
+        lines.append(link)
+    lines.append("")
+    lines.append(style["advice"])
+    return "\n".join(lines)
+
+def build_fuel_image():
+    html_out, direction, headline, link, source_label = build_fuel_html()
+    buffer = render_html_to_png(html_out)
+    caption = build_fuel_caption(direction, headline, link, source_label)
+    return buffer, caption
+
 # ---------- News (HTML/Playwright narrative-style) ----------
 
 def truncate_text(text, max_len=340):
@@ -725,3 +888,8 @@ if __name__ == "__main__":
     news_img, news_caption = build_news_image()
     send_photo_for_approval(news_img, "news", filename="update.png", mime="image/png", caption=news_caption)
     print("Sent news post")
+    time.sleep(2)
+
+    fuel_img, fuel_caption = build_fuel_image()
+    send_photo_for_approval(fuel_img, "fuel", filename="update.png", mime="image/png", caption=fuel_caption)
+    print("Sent fuel price watch post")
