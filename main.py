@@ -678,11 +678,16 @@ def parse_specific_fuel_estimates(text):
 FUEL_STATE_FILE = "/data/fuel_state.json"
 
 def load_fuel_state():
-    if os.path.exists(FUEL_STATE_FILE):
+    exists = os.path.exists(FUEL_STATE_FILE)
+    print(f"  [fuel state] checking {FUEL_STATE_FILE} — exists: {exists}")
+    if exists:
         try:
             with open(FUEL_STATE_FILE, "r") as f:
-                return json.load(f)
-        except Exception:
+                loaded = json.load(f)
+                print(f"  [fuel state] loaded keys: {list(loaded.keys())}")
+                return loaded
+        except Exception as e:
+            print(f"  [fuel state] failed to parse existing file: {e}")
             return {}
     return {}
 
@@ -691,6 +696,7 @@ def save_fuel_state(state):
         os.makedirs(os.path.dirname(FUEL_STATE_FILE), exist_ok=True)
         with open(FUEL_STATE_FILE, "w") as f:
             json.dump(state, f)
+        print(f"  [fuel state] saved successfully to {FUEL_STATE_FILE}")
     except Exception as e:
         print(f"  [fuel state] could not save: {e}")
 
@@ -707,6 +713,11 @@ def get_fuel_estimates():
 
     for name, url in FUEL_SOURCES.items():
         articles = get_articles_from_feed(url, limit=20)
+        strong_matches = [a for a in articles if is_fuel_article_strong(a)]
+        print(f"  [fuel scan] {name}: {len(articles)} articles fetched, {len(strong_matches)} passed strong filter")
+        for a in strong_matches:
+            print(f"    [fuel scan candidate] {name}: {a['title'][:80]}")
+
         for article in articles:
             if not is_fuel_article_strong(article):
                 continue
