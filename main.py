@@ -280,6 +280,26 @@ def render_html_to_png(html, width=1080, height=1350):
     buffer.seek(0)
     return buffer
 
+def render_html_to_png_dynamic(html, width=1080, min_height=900, max_height=2400):
+    """Like render_html_to_png, but lets the image grow taller to fit
+    however much content there is, instead of cramming/shrinking it into
+    a fixed frame. Use for posts with a variable number of items (e.g.
+    road status with an unpredictable number of affected roads)."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": width, "height": min_height})
+        page.set_content(html, wait_until="networkidle")
+        page.wait_for_timeout(300)
+        content_height = page.evaluate("document.body.scrollHeight")
+        final_height = max(min_height, min(content_height, max_height))
+        page.set_viewport_size({"width": width, "height": final_height})
+        page.wait_for_timeout(150)
+        screenshot_bytes = page.screenshot(full_page=True)
+        browser.close()
+    buffer = BytesIO(screenshot_bytes)
+    buffer.seek(0)
+    return buffer
+
 def generate_weather_narrative(weather_list):
     temps = [w["temp"] for w in weather_list]
     min_temp = round(min(temps))
@@ -1640,25 +1660,20 @@ def build_road_html(status=None):
         rows_html = ""
         narrative = "No road advisory available yet — this updates automatically once fresh coverage is published."
         subhead = "No road advisory available yet"
-        row_scale = 1.0
     else:
         all_statuses = status["statuses"]
 
-        # If there are a lot of roads, prioritize the most disruptive ones
-        # (closed > one-lane > passable) so the important stuff isn't cut off.
+        # Show every affected road at a consistent, readable size — the
+        # image itself grows taller to fit, instead of shrinking text or
+        # cutting the list short.
         severity_order = {"closed": 0, "one_lane": 1, "passable": 2}
-        sorted_roads = sorted(
+        sorted_roads = dict(sorted(
             all_statuses.items(),
             key=lambda item: severity_order.get(normalize_road_info(item[1])["status"], 3)
-        )
-        display_roads = dict(sorted_roads[:8])
-        omitted_count = max(0, len(all_statuses) - len(display_roads))
-
-        row_count = len(display_roads)
-        row_scale = 1.0 if row_count <= 5 else max(0.68, 1.0 - (row_count - 5) * 0.08)
+        ))
 
         rows_html = ""
-        for road, raw_info in display_roads.items():
+        for road, raw_info in sorted_roads.items():
             info = normalize_road_info(raw_info)
             style = ROAD_STATUS_STYLES.get(info["status"], ROAD_STATUS_STYLES["passable"])
             rows_html += f"""
@@ -1666,21 +1681,10 @@ def build_road_html(status=None):
         <div class="roadname">{road}</div>
         <div class="statuspill" style="background:{style['color']}22; color:{style['color']}; border:1px solid {style['color']}66;">{style['label']}</div>
       </div>"""
-        if omitted_count:
-            rows_html += f"""
-      <div class="more-note">+ {omitted_count} more road{'s' if omitted_count != 1 else ''} affected — see caption for full list</div>"""
 
         narrative = build_road_narrative(all_statuses)
         found_date = status.get("found_date", "")
         subhead = f"As of {found_date}" if found_date else "Latest road advisory"
-
-    row_gap = round(24 * row_scale)
-    row_pad_v = round(34 * row_scale)
-    row_pad_h = round(36 * row_scale)
-    roadname_size = round(30 * row_scale)
-    pill_size = round(21 * row_scale)
-    pill_pad_v = round(12 * row_scale)
-    pill_pad_h = round(24 * row_scale)
 
     html_out = f"""<!DOCTYPE html>
 <html>
@@ -1689,32 +1693,25 @@ def build_road_html(status=None):
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#14181c; position:relative; overflow:hidden; }}
+  body {{ width:1080px; min-height:900px; font-family:'Archivo',sans-serif; background:#14181c; position:relative; }}
 
-  .bg {{ position:absolute; inset:0; {bg_style} background-color:#14181c; }}
+  .bg {{ position:absolute; inset:0; {bg_style} background-color:#14181c; background-repeat:no-repeat; }}
   .overlay {{ position:absolute; inset:0; background: linear-gradient(160deg, rgba(16,20,26,0.72) 0%, rgba(22,28,34,0.78) 60%, rgba(28,37,48,0.85) 100%); }}
 
-  .content {{ position:relative; z-index:2; padding:76px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+  .content {{ position:relative; z-index:2; padding:76px; padding-bottom:60px; }}
 
   .eyebrow {{ color:#6fa8c9; font-size:22px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
   .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:54px; line-height:1.05; margin-top:14px; }}
-  .date {{ color:#c9d2d9; font-size:25px; margin-top:14px; font-weight:500; }}
   .subhead {{ color:#e2e8ec; font-size:26px; margin-top:20px; font-weight:600; }}
 
-  .narrative {{
-    margin-top:30px; background:rgba(247,242,227,0.06); border:1px solid rgba(247,242,227,0.16);
-    border-radius:16px; padding:32px 34px; color:#eef2f5; font-size:26px; line-height:1.6;
-  }}
-
-  .rows {{ margin-top:36px; display:flex; flex-direction:column; gap:{row_gap}px; }}
+  .rows {{ margin-top:36px; display:flex; flex-direction:column; gap:22px; }}
   .row {{
     display:flex; align-items:center; justify-content:space-between; gap:20px;
     background:rgba(247,242,227,0.06); border:1px solid rgba(247,242,227,0.16);
-    border-radius:16px; padding:{row_pad_v}px {row_pad_h}px;
+    border-radius:16px; padding:32px 34px;
   }}
-  .roadname {{ color:#f7fafc; font-size:{roadname_size}px; font-weight:700; }}
-  .statuspill {{ font-size:{pill_size}px; font-weight:800; letter-spacing:1px; padding:{pill_pad_v}px {pill_pad_h}px; border-radius:20px; white-space:nowrap; }}
-  .more-note {{ color:#c3ccd2; font-size:18px; text-align:center; padding-top:6px; font-style:italic; }}
+  .roadname {{ color:#f7fafc; font-size:29px; font-weight:700; }}
+  .statuspill {{ font-size:20px; font-weight:800; letter-spacing:1px; padding:12px 24px; border-radius:20px; white-space:nowrap; }}
 
   .note {{ margin-top:30px; color:#c3ccd2; font-size:19px; line-height:1.5; }}
 
@@ -1755,7 +1752,7 @@ def build_road_caption(status):
 
 def build_road_image():
     html_out, status = build_road_html()
-    buffer = render_html_to_png(html_out)
+    buffer = render_html_to_png_dynamic(html_out)
     caption = build_road_caption(status)
     return buffer, caption
 
