@@ -1466,6 +1466,14 @@ STATUS_PHRASES = {
     "passable": "fully passable"
 }
 
+def normalize_road_info(info):
+    """Handles both the old format (plain status string) and the new
+    format (dict with status+reason), so cached data saved before this
+    change doesn't break."""
+    if isinstance(info, dict):
+        return info
+    return {"status": info, "reason": None}
+
 def build_road_narrative(statuses):
     """Builds narrative sentences from extracted facts (road, status, reason)
     in our own wording — not copied from the source article."""
@@ -1473,7 +1481,8 @@ def build_road_narrative(statuses):
         return ""
 
     sentences = []
-    for road, info in statuses.items():
+    for road, raw_info in statuses.items():
+        info = normalize_road_info(raw_info)
         status_phrase = STATUS_PHRASES.get(info["status"], "affected by current conditions")
         reason = info.get("reason")
         reason_phrase = f", due to {REASON_PHRASES.get(reason, reason)}" if reason else ""
@@ -1558,7 +1567,8 @@ def build_road_html(status=None):
         subhead = "No road advisory available yet"
     else:
         rows_html = ""
-        for road, info in status["statuses"].items():
+        for road, raw_info in status["statuses"].items():
+            info = normalize_road_info(raw_info)
             style = ROAD_STATUS_STYLES.get(info["status"], ROAD_STATUS_STYLES["passable"])
             rows_html += f"""
       <div class="row">
