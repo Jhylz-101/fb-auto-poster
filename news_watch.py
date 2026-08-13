@@ -1,7 +1,7 @@
 import json
 import os
 from main import (
-    gather_news, is_local_article, build_news_html,
+    gather_news, is_local_article, build_flash_news_html,
     render_html_to_png, send_photo_for_approval
 )
 
@@ -41,15 +41,13 @@ def save_national_state(state):
         json.dump(state, f)
 
 
-def send_flash(label, top, articles, emoji):
-    others = [a for a in articles if a.get("link") != top.get("link")][:4]
-    display_articles = [top] + others
-
-    html_out = build_news_html(display_articles)
+def send_flash(label, article, badge_label):
+    html_out = build_flash_news_html(article, badge_label=badge_label)
     img_buffer = render_html_to_png(html_out)
-    caption = f"{emoji} {top['title']}"
-    if top.get("link"):
-        caption += f"\n{top['link']}"
+
+    caption = f"{'🚨' if label == 'news_flash' else '📰'} {article['title']}"
+    if article.get("link"):
+        caption += f"\n{article['link']}"
 
     send_photo_for_approval(
         img_buffer, label,
@@ -64,7 +62,7 @@ if __name__ == "__main__":
 
     articles = gather_news()
 
-    # ---- Local Benguet news watch (unchanged) ----
+    # ---- Local Benguet news watch ----
     local_new = [
         a for a in articles
         if is_local_article(a) and a.get("link") and a["link"] not in seen
@@ -75,13 +73,13 @@ if __name__ == "__main__":
     else:
         top = local_new[0]
         print(f"New local story found: {top['title']} ({top['source']})")
-        send_flash("news_flash", top, articles, "🚨")
+        send_flash("news_flash", top, "LOCAL BREAKING")
         print("Sent local flash update for approval")
         seen.add(top["link"])
 
     save_seen(seen)
 
-    # ---- National top-headline watch (new) ----
+    # ---- National top-headline watch ----
     national_state = load_national_state()
     previous_top_link = national_state.get("link", "")
 
@@ -93,7 +91,7 @@ if __name__ == "__main__":
         print("Top national headline unchanged, no alert needed.")
     else:
         print(f"New top national headline: {top_national['title']} ({top_national['source']})")
-        send_flash("national_flash", top_national, articles, "📰")
+        send_flash("national_flash", top_national, "TOP STORY")
         print("Sent national flash update for approval")
         save_national_state({
             "link": top_national["link"],
