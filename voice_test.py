@@ -13,8 +13,8 @@ SAMPLE_TEXT = (
     "local officials continue rescue operations following the Habagat rains."
 )
 
-VOICE_ID = "en-PH-JamesNeural"
-VOICE_LABEL = "Philippine English — Male (James)"
+VOICE_ID = "en-US-GuyNeural"
+VOICE_LABEL = "US English — Male (Guy)"
 
 async def generate_sample(voice_id, output_path):
     communicate = edge_tts.Communicate(SAMPLE_TEXT, voice_id)
