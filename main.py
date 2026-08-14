@@ -138,18 +138,35 @@ def get_articles_from_feed(feed_url, limit=6):
     try:
         response = requests.get(feed_url, headers=FEED_HEADERS, timeout=10)
         response.raise_for_status()
+        raw_content = response.content
 
-        # Some feeds (e.g. tribune.net.ph) include raw control characters
-        # that are illegal in XML 1.0 and make strict parsers reject the
-        # whole feed. Strip them before parsing rather than losing the
-        # entire source over one bad character.
-        text = response.content.decode("utf-8", errors="replace")
+        # Use feedparser first — it's purpose-built to handle real-world
+        # malformed RSS/Atom feeds (bad encodings, unescaped characters,
+        # non-standard tags) far more robustly than a strict XML parser.
+        try:
+            import feedparser
+            parsed = feedparser.parse(raw_content)
+            if parsed.entries:
+                articles = []
+                for position, entry in enumerate(parsed.entries[:limit]):
+                    title = entry.get("title", "").strip()
+                    desc_raw = entry.get("summary", "") or entry.get("description", "")
+                    desc = re.sub(r"<[^>]+>", "", desc_raw)
+                    desc = html_lib.unescape(desc).strip()
+                    link = entry.get("link", "").strip()
+                    if title:
+                        articles.append({"title": title, "description": desc, "link": link, "position": position})
+                if articles:
+                    return articles
+        except ImportError:
+            print("  [feed] feedparser not installed, falling back to manual XML parsing")
+        except Exception as e:
+            print(f"  [feed] feedparser failed ({type(e).__name__}: {e}), falling back to manual XML parsing")
+
+        # Fallback: manual XML parsing with character-level sanitization,
+        # in case feedparser isn't available or also can't handle this feed.
+        text = raw_content.decode("utf-8", errors="replace")
         text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text)
-
-        # Also fix bare, unescaped '&' characters — a very common RSS bug
-        # (e.g. "Tom & Jerry" instead of "Tom &amp; Jerry") that produces
-        # the same "not well-formed (invalid token)" parse error. Only
-        # escape '&' that ISN'T already the start of a valid XML entity.
         text = re.sub(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)", "&amp;", text)
 
         root = ET.fromstring(text)
