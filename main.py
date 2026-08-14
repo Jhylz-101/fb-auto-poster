@@ -1774,6 +1774,7 @@ def save_road_state(state):
 def get_road_status(report_is_new=False):
     state = load_road_state()
     stored_current = state.get("current")
+    stored_statuses = (stored_current or {}).get("statuses", {})
 
     article = find_road_article()
     if article is None:
@@ -1795,20 +1796,27 @@ def get_road_status(report_is_new=False):
         print("  [road scan] article found but no per-road status could be extracted")
         return (stored_current, False) if report_is_new else stored_current
 
+    # Merge rather than replace: a newer article may only cover 1-2 roads
+    # (e.g. a single-incident story), so keep the last-known status for any
+    # road not mentioned this time, and only overwrite the ones that are.
+    merged_statuses = dict(stored_statuses)
+    merged_statuses.update(statuses)
+
     same_link = article.get("link") and article["link"] == (stored_current or {}).get("link")
-    same_statuses = statuses == (stored_current or {}).get("statuses")
+    same_statuses = merged_statuses == stored_statuses
 
     if same_link and same_statuses:
         print("  [road state] same article, same extracted statuses — no update needed")
         return (stored_current, False) if report_is_new else stored_current
 
     if same_link and not same_statuses:
-        print(f"  [road state] same article but re-extraction produced different results (extraction logic likely improved) — updating: {statuses}")
+        print(f"  [road state] same article but re-extraction produced different results (extraction logic likely improved) — updating: {merged_statuses}")
     else:
         print(f"  [road scan] new article, extracted statuses: {statuses}")
+        print(f"  [road scan] merged with previously known statuses -> {merged_statuses}")
 
     new_current = {
-        "statuses": statuses,
+        "statuses": merged_statuses,
         "source": article.get("source", "BaguioCityGuide"),
         "link": article.get("link", ""),
         "found_date": datetime.now().strftime("%B %d, %Y")
