@@ -18,21 +18,25 @@ def send_photo(file_path, caption):
 
 def main():
     lines, headlines_used, headlines_available, est_seconds = build_reel_script()
-    send_text_message(f"🖼️ Generating {len(lines)} visual frames for review — this may take a few minutes...")
+    send_text_message(f"🖼️ Generating {len(lines)} visual frames for review — black/white/red/yellow style, real article photos where available...")
 
-    for i, line in enumerate(lines):
-        print(f"  [visual test] frame {i}: {line[:60]}")
+    for i, line_obj in enumerate(lines):
+        text = line_obj["text"]
+        image_url = line_obj.get("image_url")
+        category = line_obj.get("category")
+        source_note = "article photo" if image_url else "branded background"
+        print(f"  [visual test] frame {i} ({source_note}, {category}): {text[:60]}")
         try:
-            buffer = generate_reel_frame_image(line)
+            buffer = generate_reel_frame_image(text, image_url=image_url, category=category)
             frame_path = f"/tmp/reel_frame_{i}.png"
             with open(frame_path, "wb") as f:
                 f.write(buffer.read())
-            send_photo(frame_path, f"Frame {i+1}/{len(lines)}: {line[:100]}")
+            send_photo(frame_path, f"Frame {i+1}/{len(lines)} [{category}] ({source_note}): {text[:100]}")
         except Exception as e:
             print(f"  [visual test] frame {i} FAILED: {e}")
             send_text_message(f"⚠️ Frame {i+1} failed: {e}")
 
-    send_text_message("✅ All frames sent. Reply with what you'd like changed (background style, text size/position, brand bar, etc.).")
+    send_text_message("✅ All frames sent. Reply with what you'd like changed (color treatment, text size/position, brand bar, etc.).")
 
 if __name__ == "__main__":
     main()
