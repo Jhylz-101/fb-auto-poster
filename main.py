@@ -1532,9 +1532,16 @@ def rewrite_narrative_human_voice(raw_text):
 
 Rewrite the following news in your own words, in that same natural human voice. Keep every fact accurate — do not add, remove, or change any facts, names, numbers, or locations. Just re-tell it naturally, the way a local news page editor would explain it to their community.
 
+Structure the body like an actual news article, not one long paragraph:
+- Paragraph 1 (lead): the core who/what/when in 1-2 sentences.
+- Paragraph 2 (details): the specifics — names, places, numbers, lists — in 1-2 sentences.
+- Paragraph 3 (optional, only if there's more to say): context, what happens next, or advice for readers, in 1 sentence.
+
+Separate each paragraph with a blank line (two newlines). Each paragraph should be short — 1-2 sentences max. No bullet points, no hashtags, no labels like "Paragraph 1".
+
 Return your response as exactly two parts, separated by a line that says only ---:
 1. A short, punchy headline (under 12 words)
-2. A rewritten narrative body (2-4 sentences, natural spoken tone, no bullet points, no hashtags)
+2. The rewritten narrative body, formatted as short paragraphs per the structure above
 
 Do not include any preamble, explanation, or labels — just the headline, then ---, then the body.
 
