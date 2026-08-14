@@ -1752,6 +1752,27 @@ def find_road_article():
                 return article
     return None
 
+def find_road_articles(max_articles=5):
+    """Returns up to max_articles matching road articles (not just the
+    single newest one), so we can merge status data from several recent
+    posts. This matters because BaguioCityGuide sometimes posts narrow
+    single-incident stories (e.g. one road closure) interspersed with
+    broader roundups — relying on only the newest match can lose coverage
+    of roads the roundup mentioned but the incident story didn't."""
+    matched = []
+    for name, url in ROAD_SOURCES.items():
+        articles = get_articles_from_feed(url, limit=20)
+        print(f"  [road scan] {name}: {len(articles)} articles fetched")
+        for i, article in enumerate(articles):
+            is_match = is_road_article(article)
+            print(f"    [road scan #{i}] {'MATCH' if is_match else 'skip '} — {article['title'][:80]}")
+            if is_match:
+                article["source"] = name
+                matched.append(article)
+                if len(matched) >= max_articles:
+                    return matched
+    return matched
+
 ROAD_STATE_FILE = "/data/road_state.json"
 
 def load_road_state():
@@ -1776,49 +1797,50 @@ def get_road_status(report_is_new=False):
     stored_current = state.get("current")
     stored_statuses = (stored_current or {}).get("statuses", {})
 
-    article = find_road_article()
-    if article is None:
+    articles = find_road_articles(max_articles=5)
+    if not articles:
         print("  [road scan] no road advisory article found this run")
         return (stored_current, False) if report_is_new else stored_current
 
-    # Always re-extract fresh, even if we've seen this exact article before —
-    # our extraction logic can improve over time, and stale cached results
-    # from an older, buggier version shouldn't get stuck forever just
-    # because the link didn't change.
-    full_text = article["description"]
-    if article.get("link"):
-        fetched = fetch_full_article_text(article["link"])
-        if fetched:
-            full_text = fetched
+    newest_article = articles[0]
 
-    statuses = extract_road_statuses(full_text)
-    if not statuses:
-        print("  [road scan] article found but no per-road status could be extracted")
+    # Scan several recent matching articles and merge their extracted
+    # statuses together, rather than relying on only the single newest
+    # post — narrow single-incident stories shouldn't erase coverage that
+    # a broader roundup (still recent, just not #1) already established.
+    merged_statuses = dict(stored_statuses)
+    for article in articles:
+        full_text = article["description"]
+        if article.get("link"):
+            fetched = fetch_full_article_text(article["link"])
+            if fetched:
+                full_text = fetched
+        statuses = extract_road_statuses(full_text)
+        if statuses:
+            print(f"  [road scan] '{article['title'][:60]}' -> {list(statuses.keys())}")
+            merged_statuses.update(statuses)
+
+    if not merged_statuses:
+        print("  [road scan] articles found but no per-road status could be extracted from any of them")
         return (stored_current, False) if report_is_new else stored_current
 
-    # Merge rather than replace: a newer article may only cover 1-2 roads
-    # (e.g. a single-incident story), so keep the last-known status for any
-    # road not mentioned this time, and only overwrite the ones that are.
-    merged_statuses = dict(stored_statuses)
-    merged_statuses.update(statuses)
-
-    same_link = article.get("link") and article["link"] == (stored_current or {}).get("link")
+    same_link = newest_article.get("link") and newest_article["link"] == (stored_current or {}).get("link")
     same_statuses = merged_statuses == stored_statuses
 
     if same_link and same_statuses:
-        print("  [road state] same article, same extracted statuses — no update needed")
+        print("  [road state] same newest article, same merged statuses — no update needed")
         return (stored_current, False) if report_is_new else stored_current
 
-    if same_link and not same_statuses:
-        print(f"  [road state] same article but re-extraction produced different results (extraction logic likely improved) — updating: {merged_statuses}")
-    else:
-        print(f"  [road scan] new article, extracted statuses: {statuses}")
-        print(f"  [road scan] merged with previously known statuses -> {merged_statuses}")
+    if same_statuses:
+        print("  [road state] newest article changed but merged statuses are unchanged — no update needed")
+        return (stored_current, False) if report_is_new else stored_current
+
+    print(f"  [road scan] merged statuses across {len(articles)} recent articles -> {merged_statuses}")
 
     new_current = {
         "statuses": merged_statuses,
-        "source": article.get("source", "BaguioCityGuide"),
-        "link": article.get("link", ""),
+        "source": newest_article.get("source", "BaguioCityGuide"),
+        "link": newest_article.get("link", ""),
         "found_date": datetime.now().strftime("%B %d, %Y")
     }
     if stored_current:
