@@ -3,7 +3,9 @@ import os
 from main import (
     gather_news, is_local_article, build_flash_news_html,
     render_html_to_png_dynamic, send_photo_for_approval,
-    get_road_status, build_road_html, build_road_caption
+    get_road_status, build_road_html, build_road_caption,
+    get_fuel_status, build_fuel_html, build_fuel_specific_caption,
+    build_fuel_caption_fallback
 )
 
 SEEN_FILE = "/data/seen_news.json"
@@ -119,3 +121,27 @@ if __name__ == "__main__":
             caption=caption
         )
         print("Sent road status flash update for approval")
+
+    # ---- Fuel price watch (catches DOE announcements as soon as they're
+    # published, typically Monday evening, instead of waiting for the next
+    # day's 7AM run) ----
+    fuel_status, fuel_is_new = get_fuel_status(report_is_new=True)
+
+    if not fuel_is_new:
+        print("No new fuel price advisory this run.")
+    else:
+        print(f"New fuel price advisory found: mode={fuel_status.get('mode')}")
+        html_out, mode, data, link, source_label = build_fuel_html(status=fuel_status)
+        img_buffer = render_html_to_png_dynamic(html_out)
+
+        if mode == "specific":
+            caption = build_fuel_specific_caption(data, link, source_label)
+        else:
+            caption = build_fuel_caption_fallback(mode, data, link, source_label)
+
+        send_photo_for_approval(
+            img_buffer, "fuel_flash",
+            filename="update.png", mime="image/png",
+            caption=caption
+        )
+        print("Sent fuel price flash update for approval")
