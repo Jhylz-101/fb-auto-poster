@@ -1513,87 +1513,24 @@ def build_custom_news_html(headline, body, category):
 </html>"""
     return html_out
 
-ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
-
-def fallback_headline_body(raw_text):
-    lines = [l.strip() for l in raw_text.strip().split("\n") if l.strip()]
-    if len(lines) >= 2:
-        return lines[0], " ".join(lines[1:])
-    full = lines[0] if lines else raw_text.strip()
-    sentences = re.split(r"(?<=[.!?])\s+", full)
-    return sentences[0][:100], full
-
-def rewrite_narrative_human_voice(raw_text):
-    if not ANTHROPIC_API_KEY:
-        print("  [ai rewrite] ANTHROPIC_API_KEY not set, using raw text as fallback")
-        return fallback_headline_body(raw_text)
-
-    prompt = f"""You are the writer behind "Benguet Daily Update," a Facebook page that gives Benguet, Philippines residents daily local news in a warm, natural, human voice — never robotic, never copy-pasted from wire services.
-
-Rewrite the following news in your own words, in that same natural human voice. Keep every fact accurate — do not add, remove, or change any facts, names, numbers, or locations. Just re-tell it naturally, the way a local news page editor would explain it to their community.
-
-Structure the body like an actual news article, not one long paragraph:
-- Paragraph 1 (lead): the core who/what/when in 1-2 sentences.
-- Paragraph 2 (details): the specifics — names, places, numbers, lists — in 1-2 sentences.
-- Paragraph 3 (optional, only if there's more to say): context, what happens next, or advice for readers, in 1 sentence.
-
-Separate each paragraph with a blank line (two newlines). Each paragraph should be short — 1-2 sentences max. No bullet points, no hashtags, no labels like "Paragraph 1".
-
-Return your response as exactly two parts, separated by a line that says only ---:
-1. A short, punchy headline (under 12 words)
-2. The rewritten narrative body, formatted as short paragraphs per the structure above
-
-Do not include any preamble, explanation, or labels — just the headline, then ---, then the body.
-
-Source news:
-{raw_text}"""
-
-    try:
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": ANTHROPIC_API_KEY,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json"
-            },
-            json={
-                "model": "claude-sonnet-5",
-                "max_tokens": 500,
-                "messages": [{"role": "user", "content": prompt}]
-            },
-            timeout=30
-        )
-        result = response.json()
-
-        if "content" not in result:
-            print(f"  [ai rewrite] unexpected API response, using raw fallback: {result}")
-            return fallback_headline_body(raw_text)
-
-        text_out = "".join(
-            block.get("text", "") for block in result["content"] if block.get("type") == "text"
-        ).strip()
-
-        if "---" not in text_out:
-            print(f"  [ai rewrite] response missing '---' separator, using raw fallback. Got: {text_out[:200]}")
-            return fallback_headline_body(raw_text)
-
-        headline_part, body_part = text_out.split("---", 1)
-        headline = headline_part.strip()
-        body = body_part.strip()
-
-        if not headline or not body:
-            print("  [ai rewrite] empty headline or body after parsing, using raw fallback")
-            return fallback_headline_body(raw_text)
-
-        print(f"  [ai rewrite] rewrote successfully — headline: {headline[:60]}")
-        return headline, body
-
-    except Exception as e:
-        print(f"  [ai rewrite] failed, using raw fallback: {e}")
-        return fallback_headline_body(raw_text)
+def parse_custom_news_input(raw_text):
+    """Joel writes/humanizes the story himself in a separate chat before
+    pasting it here — no AI rewriting happens in this pipeline. This just
+    splits the paste into headline (line 1) and body (everything after),
+    preserving blank lines between paragraphs exactly as typed, so the
+    card renders proper paragraph breaks."""
+    text = raw_text.strip("\n")
+    lines = text.split("\n")
+    headline = lines[0].strip()
+    body = "\n".join(lines[1:]).strip()
+    if not body:
+        body = headline
+    return headline, body
 
 def build_custom_news_image(raw_text):
-    headline, body = rewrite_narrative_human_voice(raw_text)
+    """Takes Joel's pasted, already-humanized news text and turns it into
+    a themed, ready-to-approve post. No AI rewriting happens here."""
+    headline, body = parse_custom_news_input(raw_text)
 
     category = classify_custom_news_category(headline + " " + body)
     html_out = build_custom_news_html(headline, body, category)
