@@ -2318,6 +2318,64 @@ def is_feature_or_column_style(article):
             return True
     return False
 
+REEL_USED_HEADLINES_FILE = "/data/reel_used_headlines.json"
+REEL_DEDUP_WINDOW_HOURS = 20  # covers same-day 6am/12pm/5pm runs without permanently blacklisting a story
+
+def reel_headline_key(article):
+    """Prefers the article link (most precise) but falls back to a
+    normalized title if no link is available."""
+    return article.get("link") or article.get("title", "").strip().lower()
+
+def load_reel_used_headlines():
+    if os.path.exists(REEL_USED_HEADLINES_FILE):
+        try:
+            with open(REEL_USED_HEADLINES_FILE, "r") as f:
+                return json.load(f)
+        except Exception:
+            return []
+    return []
+
+def save_reel_used_headlines(entries):
+    try:
+        os.makedirs(os.path.dirname(REEL_USED_HEADLINES_FILE), exist_ok=True)
+        with open(REEL_USED_HEADLINES_FILE, "w") as f:
+            json.dump(entries, f)
+    except Exception as e:
+        print(f"  [reel dedup] could not save used headlines: {e}")
+
+def get_recent_used_keys(hours=REEL_DEDUP_WINDOW_HOURS):
+    """Returns the set of headline keys used within the window, and
+    prunes anything older from the stored file so it doesn't grow
+    forever."""
+    entries = load_reel_used_headlines()
+    cutoff = datetime.now() - timedelta(hours=hours)
+    recent_keys = set()
+    kept_entries = []
+    for e in entries:
+        try:
+            used_at = datetime.fromisoformat(e["used_at"])
+        except Exception:
+            continue
+        if used_at >= cutoff:
+            recent_keys.add(e["key"])
+            kept_entries.append(e)
+    save_reel_used_headlines(kept_entries)
+    return recent_keys
+
+def record_reel_headlines_used(lines):
+    """Marks this reel's headlines as used so the next scheduled run
+    (within REEL_DEDUP_WINDOW_HOURS) won't repeat them. IMPORTANT: call
+    this ONLY from the real scheduled/production reel pipeline, never
+    from manual test scripts -- otherwise repeated manual testing would
+    burn through headlines and confuse iteration."""
+    entries = load_reel_used_headlines()
+    now_iso = datetime.now().isoformat()
+    for line_obj in lines:
+        key = line_obj.get("source_key")
+        if key:
+            entries.append({"key": key, "used_at": now_iso})
+    save_reel_used_headlines(entries)
+
 def build_reel_headline_pool(max_items=8):
     """Selects up to max_items headlines in clear priority tiers, per
     Joel's explicit ordering:
@@ -2344,6 +2402,17 @@ def build_reel_headline_pool(max_items=8):
     # Feature/survey pieces and known opinion columns excluded -- real
     # articles, but not headline news.
     articles = [a for a in articles if not is_feature_or_column_style(a)]
+
+    # Same-day dedup: don't repeat a headline already used in an earlier
+    # run today (6am/12pm/5pm), unless that would leave too few
+    # candidates -- in which case allow reuse rather than run a thin reel.
+    recent_used_keys = get_recent_used_keys()
+    not_used = [a for a in articles if reel_headline_key(a) not in recent_used_keys]
+    print(f"  [reel dedup] {len(not_used)}/{len(articles)} articles not used in the last {REEL_DEDUP_WINDOW_HOURS}h")
+    if len(not_used) < 3:
+        print("  [reel dedup] too few unused articles, allowing reuse to avoid a thin reel")
+    else:
+        articles = not_used
 
     local_general = [a for a in articles if is_local_article(a) and not is_sports_article(a)]
     local_sports = [a for a in articles if is_local_article(a) and is_sports_article(a)]
@@ -2399,6 +2468,34 @@ def get_weather_narration_line():
         return para1
     except Exception as e:
         print(f"  [reel filler] weather line failed: {e}")
+        return None
+
+def get_weather_highlight_line():
+    """Always-included daily highlight (not just a slow-day filler):
+    La Trinidad's conditions, since it's the provincial capital, plus
+    today's coldest municipality -- positioned right after the road
+    watch line per Joel's request."""
+    try:
+        weather_list = []
+        for city in CITIES:
+            data = get_weather_data(city)
+            weather_list.append({
+                "city": city,
+                "temp": data["main"]["temp"],
+                "desc": data["weather"][0]["description"]
+            })
+
+        coldest = min(weather_list, key=lambda w: w["temp"])
+        la_trinidad = next((w for w in weather_list if w["city"] == "La Trinidad"), None)
+
+        if la_trinidad and coldest["city"] == "La Trinidad":
+            return f"La Trinidad, the provincial capital, is today's coldest spot at {round(la_trinidad['temp'])} degrees Celsius with {la_trinidad['desc']}."
+        elif la_trinidad:
+            return f"La Trinidad, the provincial capital, is at {round(la_trinidad['temp'])} degrees Celsius with {la_trinidad['desc']}, while today's coldest spot is {coldest['city']} at {round(coldest['temp'])} degrees."
+        else:
+            return f"Today's coldest spot in Benguet is {coldest['city']} at {round(coldest['temp'])} degrees Celsius."
+    except Exception as e:
+        print(f"  [reel highlight] weather highlight failed: {e}")
         return None
 
 def get_currency_narration_line():
@@ -2509,6 +2606,10 @@ def build_reel_script(max_items=8):
     if road_line:
         fixed_lines.append({"text": road_line, "image_url": None, "category": "road"})
 
+    weather_highlight_line = get_weather_highlight_line()
+    if weather_highlight_line:
+        fixed_lines.append({"text": weather_highlight_line, "image_url": None, "category": "weather"})
+
     if is_monday():
         fuel_line = get_fuel_narration_line()
         if fuel_line:
@@ -2548,7 +2649,7 @@ def build_reel_script(max_items=8):
         image_url = article.get("image_url")
         if not image_url and article.get("link"):
             image_url = fetch_og_image(article["link"])
-        headline_lines.append({"text": text, "image_url": image_url, "category": category})
+        headline_lines.append({"text": text, "image_url": image_url, "category": category, "source_key": reel_headline_key(article)})
 
     all_lines = fixed_lines + headline_lines + [{"text": REEL_OUTRO_LINE, "image_url": None, "category": "outro"}]
     script_text = " ".join(d["text"] for d in all_lines)
