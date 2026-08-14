@@ -141,16 +141,9 @@ def get_articles_from_feed(feed_url, limit=6):
 
         content_type = response.headers.get("Content-Type", "unknown")
         if b"<rss" not in raw_content[:2000] and b"<feed" not in raw_content[:2000] and b"<?xml" not in raw_content[:200]:
-            # This doesn't even look like XML/RSS at all — likely an HTML
-            # error page, consent wall, or bot-block page instead of the
-            # actual feed. Show exactly what came back so we can diagnose
-            # instead of guessing.
             snippet = raw_content[:400].decode("utf-8", errors="replace")
             print(f"  [feed diagnostic] {feed_url} -> Content-Type: {content_type}, doesn't look like XML. First 400 bytes: {snippet!r}")
 
-        # Use feedparser first — it's purpose-built to handle real-world
-        # malformed RSS/Atom feeds (bad encodings, unescaped characters,
-        # non-standard tags) far more robustly than a strict XML parser.
         try:
             import feedparser
             parsed = feedparser.parse(raw_content)
@@ -171,8 +164,6 @@ def get_articles_from_feed(feed_url, limit=6):
         except Exception as e:
             print(f"  [feed] feedparser failed ({type(e).__name__}: {e}), falling back to manual XML parsing")
 
-        # Fallback: manual XML parsing with character-level sanitization,
-        # in case feedparser isn't available or also can't handle this feed.
         text = raw_content.decode("utf-8", errors="replace")
         text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text)
         text = re.sub(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)", "&amp;", text)
@@ -194,9 +185,6 @@ def get_articles_from_feed(feed_url, limit=6):
         return articles
     except Exception as e:
         print(f"  [feed error] {feed_url} -> {type(e).__name__}: {e}")
-        # If this was an XML parse error with a known position, show what's
-        # actually at that spot instead of just the error message — much
-        # faster to diagnose than guessing at character classes.
         position = getattr(e, "position", None)
         try:
             if position:
@@ -636,8 +624,6 @@ FUEL_MIXED_WORDS = ["either", "may rise or fall", "may go up or down", "may incr
 def is_fuel_article(article):
     text = (article["title"] + " " + article["description"]).lower()
 
-    # Catch general fuel-price coverage (Inquirer, GMA, Rappler, PhilStar), not
-    # just formal DOE advisory wording — DOE itself isn't always named.
     has_fuel_topic = (
         "fuel price" in text or "oil price" in text or "pump price" in text
         or "per liter" in text or "/liter" in text
@@ -740,17 +726,11 @@ def fetch_full_article_text(url):
         print(f"  [fuel article fetch error] {url} -> {e}")
         return ""
 
-# Matches recurring "range" format, e.g.:
-# "Diesel - may either go up by P0.84 or go down by P1.16 per liter"
 FUEL_RANGE_PATTERN = re.compile(
     r"(Diesel|Gasoline|Kerosene)\s*[-–:]\s*may\s*(?:either\s*)?go\s*up\s*by\s*[₱P]?([\d.]+)\s*(?:per\s*liter\s*)?or\s*go\s*down\s*by\s*[₱P]?([\d.]+)\s*per\s*liter",
     re.IGNORECASE
 )
 
-# Matches single-direction phrasing used by other outlets, e.g.:
-# "Diesel prices are set to rise by more than P2 per liter this week"
-# "gasoline prices may either increase or roll back by up to P1 per liter"
-# "gasoline prices will be slashed by ₱4.70 per liter"
 FUEL_SINGLE_PATTERN = re.compile(
     r"(Diesel|Gasoline|Kerosene)\w*\s*(?:prices?\s*)?(?:,\s*[^,]*,\s*)?(?:may\s+|will\s+|are\s+|is\s+)?(?:be\s+)?"
     r"(?:set to\s+|expected to\s+)?(rise|increase|climb|surge|hike|jump|spike|drop|decrease|roll ?back|fall|decline|cut|slash|reduce|lower|trim)\w*\s*"
@@ -811,10 +791,6 @@ def save_fuel_state(state):
         print(f"  [fuel state] could not save: {e}")
 
 def get_fuel_estimates():
-    """Scan all fuel-related sources this week and merge whatever specific
-    per-liter figures we can find. Tries the fast RSS snippet first; only
-    fetches the full article page (slower) as a last resort, and only up
-    to a small number of times so this can't run away and hang."""
     combined = {}
     source_used = None
     link_used = ""
@@ -828,9 +804,6 @@ def get_fuel_estimates():
         for a in strong_matches:
             print(f"    [fuel scan candidate] {name}: {a['title'][:80]}")
 
-        # If nothing passed, show what WAS there so we can tell whether the
-        # source just had no fuel content this run, or our filter is too
-        # narrow for how this particular outlet phrases things.
         if not strong_matches and articles:
             print(f"    [fuel scan {name} titles seen]: {[a['title'][:60] for a in articles[:8]]}")
 
@@ -838,11 +811,8 @@ def get_fuel_estimates():
             if not is_fuel_article_strong(article):
                 continue
 
-            # Try the fast RSS description first — no extra network call
             estimates = parse_specific_fuel_estimates(article["description"])
 
-            # Only fetch the full page if the snippet didn't have enough,
-            # and only up to our fetch budget for this run
             if not estimates and article.get("link") and full_fetch_count < MAX_FULL_FETCHES:
                 full_fetch_count += 1
                 fetched = fetch_full_article_text(article["link"])
@@ -872,11 +842,6 @@ def get_fuel_estimates():
     return {}, None
 
 def get_fuel_status(report_is_new=False):
-    """Combines fresh scanning with persisted state: if this run finds a
-    genuinely new article (different link than what's stored), it becomes
-    the new current status and the old one is kept as previous. If nothing
-    new is found, we keep showing the last known status instead of an
-    empty 'no forecast yet' card."""
     state = load_fuel_state()
     fresh_estimates, fresh_article = get_fuel_estimates()
     fresh_link = fresh_article.get("link", "") if fresh_article else ""
@@ -1070,7 +1035,6 @@ def build_fuel_html(status=None):
 </html>"""
         return html_out, "specific", estimates, link, source_label
 
-    # Qualitative fallback (no specific numbers available for this status)
     direction = mode
     if not headline:
         headline = "No fuel price advisory found this week"
@@ -1190,9 +1154,6 @@ def truncate_text(text, max_len=340):
     return text[:max_len].rsplit(" ", 1)[0] + "…"
 
 def compute_news_layout(articles):
-    """Fixed, generously large sizes — no shrink-to-fit needed since the
-    image now grows in height to fit the content instead of forcing
-    everything into one fixed-size canvas."""
     count = max(len(articles), 1)
     return {
         "title_size": 54,
@@ -1307,10 +1268,6 @@ def build_news_html(articles):
     return html_out
 
 def build_flash_news_html(article, badge_label="BREAKING"):
-    """Single-headline layout for the 15-min flash watcher — distinct from
-    the 3-card daily digest, and posts immediately with no padding/filler.
-    Height grows to fit the content instead of forcing everything into a
-    fixed frame, so text can stay large and readable."""
     today = datetime.now().strftime("%B %d, %Y")
 
     title = article["title"]
@@ -1382,10 +1339,6 @@ def build_flash_news_html(article, badge_label="BREAKING"):
     return html_out
 
 def build_diversified_top3(articles):
-    """Ensures the daily digest isn't entirely dominated by one hyperlocal
-    source — guarantees at least one local story AND at least one genuine
-    national headline get a slot, instead of pure local-first sorting
-    filling all 3 with the same source."""
     if not articles:
         return []
 
@@ -1525,7 +1478,9 @@ def build_custom_news_html(headline, body, category):
 
   .rule {{ height:2px; background:{theme["color"]}66; margin:42px 0; }}
 
-  .body {{ color:#e3ded3; font-size:29px; line-height:1.65; }}
+  .body {{ color:#e3ded3; font-size:29px; line-height:1.65; white-space:pre-line; }}
+  .body p {{ margin-bottom:22px; }}
+  .body p:last-child {{ margin-bottom:0; }}
 
   .footer {{ margin-top:52px; display:flex; justify-content:space-between; align-items:center; padding-top:36px; border-top:1px solid rgba(247,242,227,0.16); }}
   .footerbrand {{ color:#a8a098; font-size:22px; font-weight:700; letter-spacing:2px; }}
@@ -1561,9 +1516,6 @@ def build_custom_news_html(headline, body, category):
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
 def fallback_headline_body(raw_text):
-    """Used only if the AI rewrite step can't run for some reason (missing
-    key, network issue) — just splits the raw pasted text instead of
-    rewriting it, so the pipeline never breaks entirely."""
     lines = [l.strip() for l in raw_text.strip().split("\n") if l.strip()]
     if len(lines) >= 2:
         return lines[0], " ".join(lines[1:])
@@ -1572,11 +1524,6 @@ def fallback_headline_body(raw_text):
     return sentences[0][:100], full
 
 def rewrite_narrative_human_voice(raw_text):
-    """Sends the pasted source narrative to Claude to rewrite it in
-    Benguet Daily Update's own natural, human voice — not just reformatting
-    the original text. Returns (headline, body), both in our own words,
-    with facts preserved exactly. Falls back to a plain split of the raw
-    text if the API call fails for any reason."""
     if not ANTHROPIC_API_KEY:
         print("  [ai rewrite] ANTHROPIC_API_KEY not set, using raw text as fallback")
         return fallback_headline_body(raw_text)
@@ -1639,9 +1586,6 @@ Source news:
         return fallback_headline_body(raw_text)
 
 def build_custom_news_image(raw_text):
-    """Takes Joel's pasted source news, rewrites it in Benguet Daily
-    Update's own human voice via Claude, and turns it into a themed,
-    ready-to-approve post."""
     headline, body = rewrite_narrative_human_voice(raw_text)
 
     category = classify_custom_news_category(headline + " " + body)
@@ -1686,8 +1630,6 @@ FB_PAGE_ACCESS_TOKEN = os.environ.get("FB_PAGE_ACCESS_TOKEN", "")
 FB_PAGE_ID = os.environ.get("FB_PAGE_ID", "")
 
 def get_telegram_file_bytes(file_id):
-    """Downloads the actual image bytes for a Telegram file_id, using
-    Telegram's own storage as the source of truth."""
     try:
         file_info = requests.get(
             f"https://api.telegram.org/bot{BOT_TOKEN}/getFile",
@@ -1705,7 +1647,6 @@ def get_telegram_file_bytes(file_id):
         return None
 
 def post_to_facebook(image_bytes, caption):
-    """Publishes a photo + caption to the configured Facebook Page."""
     if not FB_PAGE_ACCESS_TOKEN or not FB_PAGE_ID:
         return {"error": "FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID not configured"}
 
@@ -1746,12 +1687,6 @@ def send_text_message(text):
     requests.post(url, data={"chat_id": CHAT_ID, "text": text})
 
 def process_telegram_approvals():
-    """Checks for new Approve/Reject button presses since the last check,
-    and actually publishes to Facebook on approval. Meant to be called
-    frequently (e.g. every 15 min from the flash-watch service) so
-    approvals get acted on promptly."""
-    # getUpdates (polling) silently returns nothing if a webhook is set —
-    # check for that and clear it, since we rely on polling.
     try:
         webhook_info = requests.get(f"https://api.telegram.org/bot{BOT_TOKEN}/getWebhookInfo", timeout=10).json()
         webhook_url = webhook_info.get("result", {}).get("url", "")
@@ -1809,8 +1744,6 @@ def process_telegram_approvals():
                     answer_callback_query(callback_id, "No photo found on this message")
                     continue
 
-                # Telegram sends multiple resolutions, smallest to largest —
-                # take the largest for best quality.
                 largest_photo = photos[-1]
                 image_bytes = get_telegram_file_bytes(largest_photo["file_id"])
 
@@ -1841,18 +1774,12 @@ def process_telegram_approvals():
                 answer_callback_query(callback_id, "Rejected — discarded")
                 send_text_message(f"🚫 '{label}' rejected — not posted to Facebook.")
         except Exception as e:
-            # Never let a single bad update block the offset from advancing —
-            # otherwise this update gets retried forever on every future run.
             print(f"  [approvals] error handling update {update['update_id']}: {e}")
 
     if latest_update_id:
         save_telegram_offset(latest_update_id)
 
 def seed_fuel_state_if_empty():
-    """One-time bootstrap: if no fuel state exists yet, seed it with real,
-    manually-verified numbers so the system has something to compare
-    against instead of starting from zero. Safe to leave in permanently —
-    it only writes if the file doesn't already exist."""
     if os.path.exists(FUEL_STATE_FILE):
         print("  [fuel seed] state file already exists, skipping seed")
         return
@@ -1943,12 +1870,6 @@ def split_sentences(text):
     return re.split(r"(?<=[.!?])\s+", text)
 
 def extract_road_statuses(text):
-    """Extracts status/reason/location per road using sentence boundaries,
-    so one road's status can never bleed into another's (a common failure
-    mode with fixed character windows in dense prose)."""
-    # Strip periods from known abbreviations first, so they don't get
-    # misread as sentence boundaries (e.g. "Gov. Bado Dangwa..." would
-    # otherwise get split into two fragments at "Gov.").
     text = text.replace("Gov.", "Gov")
 
     results = {}
@@ -1995,17 +1916,11 @@ STATUS_PHRASES = {
 }
 
 def normalize_road_info(info):
-    """Handles both the old format (plain status string) and the new
-    format (dict with status+reason), so cached data saved before this
-    change doesn't break."""
     if isinstance(info, dict):
         return info
     return {"status": info, "reason": None}
 
 def build_road_narrative(statuses):
-    """Builds narrative sentences from extracted facts (road, status, reason,
-    location) in our own wording — not copied from the source article.
-    Returned as bullet points, one per road, for readability."""
     if not statuses:
         return ""
 
@@ -2036,12 +1951,6 @@ def find_road_article():
     return None
 
 def find_road_articles(max_articles=5):
-    """Returns up to max_articles matching road articles (not just the
-    single newest one), so we can merge status data from several recent
-    posts. This matters because BaguioCityGuide sometimes posts narrow
-    single-incident stories (e.g. one road closure) interspersed with
-    broader roundups — relying on only the newest match can lose coverage
-    of roads the roundup mentioned but the incident story didn't."""
     matched = []
     for name, url in ROAD_SOURCES.items():
         articles = get_articles_from_feed(url, limit=20)
@@ -2087,10 +1996,6 @@ def get_road_status(report_is_new=False):
 
     newest_article = articles[0]
 
-    # Scan several recent matching articles and merge their extracted
-    # statuses together, rather than relying on only the single newest
-    # post — narrow single-incident stories shouldn't erase coverage that
-    # a broader roundup (still recent, just not #1) already established.
     merged_statuses = dict(stored_statuses)
     for article in articles:
         full_text = article["description"]
@@ -2163,9 +2068,6 @@ def build_road_html(status=None):
     else:
         all_statuses = status["statuses"]
 
-        # Show every affected road at a consistent, readable size — the
-        # image itself grows taller to fit, instead of shrinking text or
-        # cutting the list short.
         severity_order = {"closed": 0, "one_lane": 1, "passable": 2}
         sorted_roads = dict(sorted(
             all_statuses.items(),
