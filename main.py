@@ -2489,9 +2489,9 @@ def get_weather_highlight_line():
         la_trinidad = next((w for w in weather_list if w["city"] == "La Trinidad"), None)
 
         if la_trinidad and coldest["city"] == "La Trinidad":
-            return f"La Trinidad, the provincial capital, is today's coldest spot at {round(la_trinidad['temp'])} degrees Celsius with {la_trinidad['desc']}."
+            return f"La Trinidad is today's coldest spot at {round(la_trinidad['temp'])} degrees Celsius with {la_trinidad['desc']}."
         elif la_trinidad:
-            return f"La Trinidad, the provincial capital, is at {round(la_trinidad['temp'])} degrees Celsius with {la_trinidad['desc']}, while today's coldest spot is {coldest['city']} at {round(coldest['temp'])} degrees."
+            return f"La Trinidad is at {round(la_trinidad['temp'])} degrees Celsius with {la_trinidad['desc']}, while today's coldest spot is {coldest['city']} at {round(coldest['temp'])} degrees."
         else:
             return f"Today's coldest spot in Benguet is {coldest['city']} at {round(coldest['temp'])} degrees Celsius."
     except Exception as e:
