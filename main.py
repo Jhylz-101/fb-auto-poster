@@ -2402,7 +2402,7 @@ def build_reel_road_narration_line():
         return None
 
 REEL_INTRO_LINE = "Here's what's happening today."
-REEL_OUTRO_LINE = "That's your update for today. Stay safe, and we'll see you tomorrow."
+REEL_OUTRO_LINE = "That's your update for today. Stay safe, and till next time."
 
 REEL_WORDS_PER_SECOND = 2.5
 REEL_TARGET_MAX_SECONDS = 85  # buffer under Facebook's 90s Reels hard cap
