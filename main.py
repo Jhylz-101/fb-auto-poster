@@ -28,7 +28,8 @@ NEWS_SOURCES = {
     "PNA": "https://syndication.pna.gov.ph/rss",
     "NorDis": "https://nordis.net/feed/",
     "GMA News": "https://data.gmanews.tv/gno/rss/news/feed.xml",
-    "BaguioCityGuide": "https://baguiocityguide.com/feed/"
+    "BaguioCityGuide": "https://baguiocityguide.com/feed/",
+    "Daily Tribune": "https://tribune.net.ph/feed/"
 }
 
 CONNECTORS = ["Meanwhile, ", "In other news, ", "Elsewhere, ", "Also making headlines: "]
@@ -182,7 +183,7 @@ def is_excluded_article(article):
     matches_entertainment = is_entertainment_article(article)
     return (matches_exclude or matches_entertainment) and not is_local_article(article)
 
-SOURCE_PRIORITY = ["BaguioCityGuide", "Inquirer", "PhilStar", "GMA News", "NorDis", "PNA", "Rappler"]
+SOURCE_PRIORITY = ["BaguioCityGuide", "Daily Tribune", "Inquirer", "PhilStar", "GMA News", "NorDis", "PNA", "Rappler"]
 
 def source_rank(name):
     try:
@@ -649,7 +650,9 @@ FUEL_SOURCES = {
     "Rappler": "https://www.rappler.com/feed/",
     "Inquirer": "https://www.inquirer.net/fullfeed",
     "PhilStar": "https://www.philstar.com/rss/headlines",
-    "GMA News": "https://data.gmanews.tv/gno/rss/news/feed.xml"
+    "GMA News": "https://data.gmanews.tv/gno/rss/news/feed.xml",
+    "BaguioCityGuide": "https://baguiocityguide.com/feed/",
+    "Daily Tribune": "https://tribune.net.ph/feed/"
 }
 
 def find_fuel_article():
@@ -1590,7 +1593,8 @@ def seed_fuel_state_if_empty():
 # ---------- Road Status Watch (Kennon/Halsema/Marcos, via BaguioCityGuide) ----------
 
 ROAD_SOURCES = {
-    "BaguioCityGuide": "https://baguiocityguide.com/feed/"
+    "BaguioCityGuide": "https://baguiocityguide.com/feed/",
+    "Daily Tribune": "https://tribune.net.ph/feed/"
 }
 
 TRACKED_ROADS = [
