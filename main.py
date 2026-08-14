@@ -31,7 +31,10 @@ NEWS_SOURCES = {
     "BaguioCityGuide": "https://baguiocityguide.com/feed/"
 }
 
-CONNECTORS = ["Meanwhile, ", "In other news, ", "Elsewhere, ", "Also making headlines: "]
+CONNECTORS = [
+    "Meanwhile, ", "In other news, ", "Elsewhere, ", "Also making headlines, ",
+    "On another note, ", "Moving on, "
+]
 
 ACCENT_BLUE = (86, 180, 233, 255)
 ACCENT_GREEN = (110, 210, 130, 255)
@@ -155,8 +158,15 @@ def get_articles_from_feed(feed_url, limit=6):
                     desc = re.sub(r"<[^>]+>", "", desc_raw)
                     desc = html_lib.unescape(desc).strip()
                     link = entry.get("link", "").strip()
+                    published_dt = None
+                    published_struct = entry.get("published_parsed") or entry.get("updated_parsed")
+                    if published_struct:
+                        try:
+                            published_dt = datetime.fromtimestamp(time.mktime(published_struct))
+                        except Exception:
+                            published_dt = None
                     if title:
-                        articles.append({"title": title, "description": desc, "link": link, "position": position})
+                        articles.append({"title": title, "description": desc, "link": link, "position": position, "published": published_dt})
                 if articles:
                     return articles
         except ImportError:
@@ -175,13 +185,23 @@ def get_articles_from_feed(feed_url, limit=6):
             title_el = item.find("title")
             desc_el = item.find("description")
             link_el = item.find("link")
+            pubdate_el = item.find("pubDate")
             title = title_el.text.strip() if title_el is not None and title_el.text else None
             desc_raw = desc_el.text.strip() if desc_el is not None and desc_el.text else ""
             desc = re.sub(r"<[^>]+>", "", desc_raw)
             desc = html_lib.unescape(desc).strip()
             link = link_el.text.strip() if link_el is not None and link_el.text else ""
+            published_dt = None
+            if pubdate_el is not None and pubdate_el.text:
+                try:
+                    import email.utils
+                    published_dt = email.utils.parsedate_to_datetime(pubdate_el.text.strip())
+                    if published_dt.tzinfo is not None:
+                        published_dt = published_dt.replace(tzinfo=None)
+                except Exception:
+                    published_dt = None
             if title:
-                articles.append({"title": title.strip(), "description": desc, "link": link, "position": position})
+                articles.append({"title": title.strip(), "description": desc, "link": link, "position": position, "published": published_dt})
         return articles
     except Exception as e:
         print(f"  [feed error] {feed_url} -> {type(e).__name__}: {e}")
@@ -2183,7 +2203,45 @@ def gather_reel_article_pool():
             continue
         seen_titles.add(key)
         deduped.append(a)
-    return deduped
+
+    def is_recent(article, hours):
+        published = article.get("published")
+        if not published:
+            return False
+        age_hours = (datetime.now() - published).total_seconds() / 3600
+        return 0 <= age_hours <= hours
+
+    fresh = [a for a in deduped if is_recent(a, 36)]
+    print(f"  [reel pool] {len(fresh)}/{len(deduped)} articles within 36h freshness window")
+
+    if len(fresh) < 3:
+        fresh = [a for a in deduped if is_recent(a, 60)]
+        print(f"  [reel pool] too few within 36h, relaxed to 60h -> {len(fresh)} articles")
+
+    return fresh
+
+TITLE_STOPWORDS = {
+    "the", "a", "an", "in", "on", "at", "to", "of", "for", "and", "with",
+    "as", "is", "are", "by", "from", "this", "that", "its", "after",
+    "before", "due", "amid", "new", "over", "into", "than", "not"
+}
+
+def title_significant_words(title):
+    words = re.findall(r"[a-zA-Z']+", title.lower())
+    return set(w for w in words if w not in TITLE_STOPWORDS and len(w) > 3)
+
+def is_too_similar_to_selected(article, selected):
+    """Catches multiple articles covering the same underlying story from
+    different angles (e.g. four separate headlines all about the same
+    Habagat rain event) -- these have different titles so exact-match
+    dedup misses them, but share enough significant words to read as
+    repetitive back-to-back in a spoken script."""
+    words = title_significant_words(article["title"])
+    for s in selected:
+        s_words = title_significant_words(s["title"])
+        if len(words & s_words) >= 2:
+            return True
+    return False
 
 def build_reel_headline_pool(max_items=8, sports_slots=1):
     """Selects up to max_items headlines: Benguet/Cordillera general news
@@ -2211,9 +2269,12 @@ def build_reel_headline_pool(max_items=8, sports_slots=1):
 
     def add(article):
         key = article["title"].strip().lower()
-        if key not in selected_titles and len(selected) < max_items:
-            selected.append(article)
-            selected_titles.add(key)
+        if key in selected_titles or len(selected) >= max_items:
+            return
+        if is_too_similar_to_selected(article, selected):
+            return
+        selected.append(article)
+        selected_titles.add(key)
 
     general_slots = max_items - sports_slots
 
@@ -2343,43 +2404,69 @@ def build_reel_road_narration_line():
 REEL_INTRO_LINE = "Good morning, Benguet. Here's what's happening today."
 REEL_OUTRO_LINE = "That's your update for today. Stay safe, and we'll see you tomorrow."
 
+REEL_WORDS_PER_SECOND = 2.5
+REEL_TARGET_MAX_SECONDS = 85  # buffer under Facebook's 90s Reels hard cap
+REEL_WORD_BUDGET = round(REEL_TARGET_MAX_SECONDS * REEL_WORDS_PER_SECOND)  # ~212 words
+
 def build_reel_script(max_items=8):
     """Builds the full narration script draft: intro, road watch line,
-    Monday fuel line if applicable, headlines (with weather/currency
-    filler on slow days), outro. Returns (script_text, headline_count,
-    is_heavy_day) -- does NOT send to Telegram or run voice/video."""
-    headlines = build_reel_headline_pool(max_items=max_items, sports_slots=1)
+    Monday fuel line if applicable, headlines with rotating connector
+    phrases for natural pacing (with weather/currency filler on slow
+    days), outro. Headline count is driven by a ~85s time budget, not a
+    fixed count -- on a heavy news day, extra headlines simply don't
+    make the cut rather than forcing everything into 90 seconds.
+    Returns (script_text, headlines_used, headlines_available,
+    est_seconds). Does NOT send to Telegram or run voice/video."""
+    candidates = build_reel_headline_pool(max_items=max_items, sports_slots=1)
 
-    lines = [REEL_INTRO_LINE]
+    fixed_lines = [REEL_INTRO_LINE]
 
     road_line = build_reel_road_narration_line()
     if road_line:
-        lines.append(road_line)
+        fixed_lines.append(road_line)
 
     if is_monday():
         fuel_line = get_fuel_narration_line()
         if fuel_line:
-            lines.append(fuel_line)
+            fixed_lines.append(fuel_line)
 
     # Slow day: pad with weather + currency so the reel isn't thin,
     # per Joel's instruction to fill with local weather/currency/gold
     # when there aren't enough genuine headlines.
-    if len(headlines) < 3:
+    if len(candidates) < 3:
         weather_line = get_weather_narration_line()
         if weather_line:
-            lines.append(weather_line)
+            fixed_lines.append(weather_line)
         currency_line = get_currency_narration_line()
         if currency_line:
-            lines.append(currency_line)
+            fixed_lines.append(currency_line)
 
-    for article in headlines:
-        lines.append(headline_to_sentence(article))
+    def word_count(text_lines):
+        return sum(len(line.split()) for line in text_lines)
 
-    lines.append(REEL_OUTRO_LINE)
+    outro_words = len(REEL_OUTRO_LINE.split())
+    headline_lines = []
+    connector_i = 0
 
-    script_text = " ".join(lines)
-    is_heavy_day = len(headlines) >= 7
-    return script_text, len(headlines), is_heavy_day
+    for i, article in enumerate(candidates):
+        sentence = headline_to_sentence(article)
+        if i == 0:
+            line = sentence
+        else:
+            line = CONNECTORS[connector_i % len(CONNECTORS)] + sentence
+            connector_i += 1
+
+        projected = word_count(fixed_lines) + word_count(headline_lines) + len(line.split()) + outro_words
+        if projected > REEL_WORD_BUDGET and len(headline_lines) > 0:
+            # Budget reached -- stop here rather than cramming the rest in.
+            break
+        headline_lines.append(line)
+
+    all_lines = fixed_lines + headline_lines + [REEL_OUTRO_LINE]
+    script_text = " ".join(all_lines)
+    est_seconds = round(len(script_text.split()) / REEL_WORDS_PER_SECOND)
+
+    return script_text, len(headline_lines), len(candidates), est_seconds
 
 if __name__ == "__main__":
     seed_fuel_state_if_empty()
