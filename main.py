@@ -140,6 +140,15 @@ def get_articles_from_feed(feed_url, limit=6):
         response.raise_for_status()
         raw_content = response.content
 
+        content_type = response.headers.get("Content-Type", "unknown")
+        if b"<rss" not in raw_content[:2000] and b"<feed" not in raw_content[:2000] and b"<?xml" not in raw_content[:200]:
+            # This doesn't even look like XML/RSS at all — likely an HTML
+            # error page, consent wall, or bot-block page instead of the
+            # actual feed. Show exactly what came back so we can diagnose
+            # instead of guessing.
+            snippet = raw_content[:400].decode("utf-8", errors="replace")
+            print(f"  [feed diagnostic] {feed_url} -> Content-Type: {content_type}, doesn't look like XML. First 400 bytes: {snippet!r}")
+
         # Use feedparser first — it's purpose-built to handle real-world
         # malformed RSS/Atom feeds (bad encodings, unescaped characters,
         # non-standard tags) far more robustly than a strict XML parser.
@@ -186,6 +195,18 @@ def get_articles_from_feed(feed_url, limit=6):
         return articles
     except Exception as e:
         print(f"  [feed error] {feed_url} -> {type(e).__name__}: {e}")
+        # If this was an XML parse error with a known position, show what's
+        # actually at that spot instead of just the error message — much
+        # faster to diagnose than guessing at character classes.
+        position = getattr(e, "position", None)
+        try:
+            if position:
+                offset = position[1]
+                start = max(0, offset - 80)
+                end = min(len(text), offset + 80)
+                print(f"  [feed diagnostic] content around parse error position: {text[start:end]!r}")
+        except Exception:
+            pass
         return []
 
 def is_local_article(article):
