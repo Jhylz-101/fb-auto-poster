@@ -1558,19 +1558,91 @@ def build_custom_news_html(headline, body, category):
 </html>"""
     return html_out
 
-def build_custom_news_image(raw_text):
-    """Takes Joel's pasted text (headline on first line, story below) and
-    turns it into a themed, ready-to-approve post."""
-    lines = [l.strip() for l in raw_text.strip().split("\n") if l.strip()]
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 
+def fallback_headline_body(raw_text):
+    """Used only if the AI rewrite step can't run for some reason (missing
+    key, network issue) — just splits the raw pasted text instead of
+    rewriting it, so the pipeline never breaks entirely."""
+    lines = [l.strip() for l in raw_text.strip().split("\n") if l.strip()]
     if len(lines) >= 2:
-        headline = lines[0]
-        body = " ".join(lines[1:])
-    else:
-        full = lines[0] if lines else raw_text.strip()
-        sentences = re.split(r"(?<=[.!?])\s+", full)
-        headline = sentences[0][:100]
-        body = full
+        return lines[0], " ".join(lines[1:])
+    full = lines[0] if lines else raw_text.strip()
+    sentences = re.split(r"(?<=[.!?])\s+", full)
+    return sentences[0][:100], full
+
+def rewrite_narrative_human_voice(raw_text):
+    """Sends the pasted source narrative to Claude to rewrite it in
+    Benguet Daily Update's own natural, human voice — not just reformatting
+    the original text. Returns (headline, body), both in our own words,
+    with facts preserved exactly. Falls back to a plain split of the raw
+    text if the API call fails for any reason."""
+    if not ANTHROPIC_API_KEY:
+        print("  [ai rewrite] ANTHROPIC_API_KEY not set, using raw text as fallback")
+        return fallback_headline_body(raw_text)
+
+    prompt = f"""You are the writer behind "Benguet Daily Update," a Facebook page that gives Benguet, Philippines residents daily local news in a warm, natural, human voice — never robotic, never copy-pasted from wire services.
+
+Rewrite the following news in your own words, in that same natural human voice. Keep every fact accurate — do not add, remove, or change any facts, names, numbers, or locations. Just re-tell it naturally, the way a local news page editor would explain it to their community.
+
+Return your response as exactly two parts, separated by a line that says only ---:
+1. A short, punchy headline (under 12 words)
+2. A rewritten narrative body (2-4 sentences, natural spoken tone, no bullet points, no hashtags)
+
+Do not include any preamble, explanation, or labels — just the headline, then ---, then the body.
+
+Source news:
+{raw_text}"""
+
+    try:
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": ANTHROPIC_API_KEY,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": "claude-sonnet-5",
+                "max_tokens": 500,
+                "messages": [{"role": "user", "content": prompt}]
+            },
+            timeout=30
+        )
+        result = response.json()
+
+        if "content" not in result:
+            print(f"  [ai rewrite] unexpected API response, using raw fallback: {result}")
+            return fallback_headline_body(raw_text)
+
+        text_out = "".join(
+            block.get("text", "") for block in result["content"] if block.get("type") == "text"
+        ).strip()
+
+        if "---" not in text_out:
+            print(f"  [ai rewrite] response missing '---' separator, using raw fallback. Got: {text_out[:200]}")
+            return fallback_headline_body(raw_text)
+
+        headline_part, body_part = text_out.split("---", 1)
+        headline = headline_part.strip()
+        body = body_part.strip()
+
+        if not headline or not body:
+            print("  [ai rewrite] empty headline or body after parsing, using raw fallback")
+            return fallback_headline_body(raw_text)
+
+        print(f"  [ai rewrite] rewrote successfully — headline: {headline[:60]}")
+        return headline, body
+
+    except Exception as e:
+        print(f"  [ai rewrite] failed, using raw fallback: {e}")
+        return fallback_headline_body(raw_text)
+
+def build_custom_news_image(raw_text):
+    """Takes Joel's pasted source news, rewrites it in Benguet Daily
+    Update's own human voice via Claude, and turns it into a themed,
+    ready-to-approve post."""
+    headline, body = rewrite_narrative_human_voice(raw_text)
 
     category = classify_custom_news_category(headline + " " + body)
     html_out = build_custom_news_html(headline, body, category)
