@@ -2477,6 +2477,89 @@ def build_reel_script_text(max_items=8):
     script_text = " ".join(all_lines)
     return script_text, headlines_used, headlines_available, est_seconds
 
+# ---------- Reel Visual Frames (place-aware backgrounds + burned-in captions) ----------
+
+REEL_WIDTH = 1080
+REEL_HEIGHT = 1920
+
+REEL_BRANDED_BG_PROMPT = "misty Benguet mountain highland landscape at golden hour, cinematic aerial view, minimalist"
+
+def detect_place_in_reel_line(line):
+    """Checks a script line against known municipality and tracked-road
+    names so the background can be tied to the actual place mentioned,
+    instead of always using the generic branded background."""
+    text = line.lower()
+    for city in CITIES:
+        if city.lower() in text:
+            return city
+    for road in TRACKED_ROADS:
+        if road.lower() in text:
+            return road
+    return None
+
+def reel_background_prompt_for_line(line):
+    place = detect_place_in_reel_line(line)
+    if place:
+        return f"aerial cinematic view of {place}, Benguet Philippines, misty mountains, golden hour lighting, minimalist"
+    return REEL_BRANDED_BG_PROMPT
+
+def build_reel_frame_html(line_text, bg_data_uri):
+    """Vertical (1080x1920) frame: background image, dark gradient for
+    caption readability, burned-in caption text lower-third."""
+    html_out = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;600;700;800&display=swap');
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ width:{REEL_WIDTH}px; height:{REEL_HEIGHT}px; position:relative; font-family:'Archivo',sans-serif; background:#14181c; }}
+
+  .bg {{
+    position:absolute; inset:0;
+    background-image:url('{bg_data_uri}'); background-size:cover; background-position:center;
+  }}
+  .overlay {{
+    position:absolute; inset:0;
+    background: linear-gradient(180deg, rgba(10,14,18,0.15) 0%, rgba(10,14,18,0.20) 50%, rgba(10,14,18,0.85) 100%);
+  }}
+
+  .brandbar {{
+    position:absolute; top:70px; left:60px; color:#fff; font-size:26px;
+    font-weight:800; letter-spacing:3px; text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+  }}
+
+  .caption {{
+    position:absolute; left:60px; right:60px; bottom:180px;
+    color:#fff; font-family:'Archivo Black',sans-serif; font-size:58px; line-height:1.28;
+    text-shadow: 0 4px 24px rgba(0,0,0,0.7);
+  }}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="overlay"></div>
+  <div class="brandbar">BENGUET DAILY UPDATE</div>
+  <div class="caption">{line_text}</div>
+</body>
+</html>"""
+    return html_out
+
+def generate_reel_frame_image(line_text):
+    """Generates one vertical frame (PNG bytes buffer) for a single
+    script line: place-aware or branded background + burned-in caption."""
+    prompt = reel_background_prompt_for_line(line_text)
+    try:
+        bg_img = generate_background(prompt, height=REEL_HEIGHT)
+        bg_data_uri = image_to_data_uri(bg_img)
+    except Exception as e:
+        print(f"  [reel frame] background generation failed for '{line_text[:40]}': {e}")
+        bg_data_uri = ""
+
+    html_out = build_reel_frame_html(line_text, bg_data_uri)
+    buffer = render_html_to_png(html_out, width=REEL_WIDTH, height=REEL_HEIGHT)
+    return buffer
+
 if __name__ == "__main__":
     seed_fuel_state_if_empty()
 
