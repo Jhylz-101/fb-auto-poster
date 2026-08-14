@@ -1663,6 +1663,35 @@ def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="im
         print(f"  [telegram] '{label}' delivered OK")
     return result
 
+def send_video_for_approval(video_path, label, caption=None):
+    """Same Approve/Reject pattern as send_photo_for_approval, but for
+    the reel video. Sent from a file path (not a buffer) since video
+    files are large enough that keeping them on disk is safer than
+    holding the whole thing in memory."""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo"
+    keyboard = {
+        "inline_keyboard": [[
+            {"text": "Approve", "callback_data": f"approve_{label}"},
+            {"text": "Reject", "callback_data": f"reject_{label}"}
+        ]]
+    }
+    with open(video_path, "rb") as f:
+        files = {"video": (os.path.basename(video_path), f, "video/mp4")}
+        data = {
+            "chat_id": CHAT_ID,
+            "reply_markup": json.dumps(keyboard),
+            "supports_streaming": True
+        }
+        if caption:
+            data["caption"] = caption
+        response = requests.post(url, files=files, data=data, timeout=180)
+    result = response.json()
+    if not result.get("ok"):
+        print(f"  [telegram ERROR] '{label}' video failed: {result}")
+    else:
+        print(f"  [telegram] '{label}' video delivered OK")
+    return result
+
 # ---------- Facebook posting (fetches the approved image directly from
 # Telegram, so it works regardless of which service/volume handles the
 # approval check — no shared local storage needed) ----------
@@ -1699,6 +1728,72 @@ def post_to_facebook(image_bytes, caption):
     }
     response = requests.post(url, files=files, data=data)
     return response.json()
+
+FB_API_VERSION = "v21.0"
+
+def post_reel_to_facebook(video_bytes, caption):
+    """Publishes a video to the Facebook Page as a Reel, using the
+    resumable upload flow Facebook requires for Reels specifically
+    (different from a regular video post). THIS IS THE UNTESTED PIECE --
+    Joel's Facebook App has never actually published video before, so
+    this is where we'll find out if the video-publish permission is
+    granted. If it fails, the error message returned should say exactly
+    what's missing (permission scope, app review requirement, etc.)."""
+    if not FB_PAGE_ACCESS_TOKEN or not FB_PAGE_ID:
+        return {"error": "FB_PAGE_ACCESS_TOKEN or FB_PAGE_ID not configured"}
+
+    start_url = f"https://graph.facebook.com/{FB_API_VERSION}/{FB_PAGE_ID}/video_reels"
+    try:
+        start_response = requests.post(start_url, data={
+            "upload_phase": "start",
+            "access_token": FB_PAGE_ACCESS_TOKEN
+        }, timeout=30).json()
+    except Exception as e:
+        return {"error": f"start phase request failed: {e}"}
+
+    if "video_id" not in start_response or "upload_url" not in start_response:
+        print(f"  [facebook reel] start phase unexpected response: {start_response}")
+        return {"error": "start phase did not return video_id/upload_url", "raw": start_response}
+
+    video_id = start_response["video_id"]
+    upload_url = start_response["upload_url"]
+    print(f"  [facebook reel] start phase OK, video_id={video_id}")
+
+    try:
+        upload_response = requests.post(
+            upload_url,
+            headers={
+                "Authorization": f"OAuth {FB_PAGE_ACCESS_TOKEN}",
+                "offset": "0",
+                "file_size": str(len(video_bytes)),
+            },
+            data=video_bytes,
+            timeout=180
+        )
+        upload_result = upload_response.json() if upload_response.content else {}
+    except Exception as e:
+        return {"error": f"upload phase request failed: {e}"}
+
+    if upload_response.status_code >= 400:
+        print(f"  [facebook reel] upload phase failed (status {upload_response.status_code}): {upload_result}")
+        return {"error": "upload phase failed", "raw": upload_result, "status": upload_response.status_code}
+
+    print(f"  [facebook reel] upload phase OK")
+
+    finish_url = f"https://graph.facebook.com/{FB_API_VERSION}/{FB_PAGE_ID}/video_reels"
+    try:
+        finish_response = requests.post(finish_url, data={
+            "upload_phase": "finish",
+            "video_id": video_id,
+            "description": caption or "",
+            "video_state": "PUBLISHED",
+            "access_token": FB_PAGE_ACCESS_TOKEN
+        }, timeout=30).json()
+    except Exception as e:
+        return {"error": f"finish phase request failed: {e}"}
+
+    print(f"  [facebook reel] finish phase response: {finish_response}")
+    return finish_response
 
 TELEGRAM_OFFSET_FILE = "/data/telegram_offset.json"
 
@@ -1778,11 +1873,38 @@ def process_telegram_approvals():
                 label = data[len("approve_"):]
                 message = callback.get("message", {})
                 photos = message.get("photo", [])
+                video = message.get("video")
                 caption = message.get("caption", "")
 
+                if video:
+                    print(f"  [approvals] approve for '{label}' — video message")
+                    video_bytes = get_telegram_file_bytes(video["file_id"])
+
+                    if not video_bytes:
+                        print(f"  [approvals] approve for '{label}' but could not download the video from Telegram")
+                        answer_callback_query(callback_id, "Could not download video — check logs")
+                        continue
+
+                    print(f"  [approvals] approving '{label}' — posting Reel to Facebook")
+                    result = post_reel_to_facebook(video_bytes, caption)
+                    if result.get("success") or result.get("video_id"):
+                        print(f"  [approvals] '{label}' Reel posted to Facebook successfully: {result}")
+                        answer_callback_query(callback_id, "Posted to Facebook!")
+                        send_text_message(f"✅ '{label}' approved and posted to Facebook as a Reel.")
+                    else:
+                        print(f"  [approvals] '{label}' Facebook Reel post FAILED: {result}")
+                        answer_callback_query(callback_id, "Facebook Reel post failed — check logs")
+                        error_info = result.get("error", result)
+                        if isinstance(error_info, dict):
+                            error_text = error_info.get("message", str(error_info))
+                        else:
+                            error_text = str(error_info)
+                        send_text_message(f"⚠️ '{label}' approved but Facebook Reel post failed: {error_text}")
+                    continue
+
                 if not photos:
-                    print(f"  [approvals] approve for '{label}' but the original message has no photo attached")
-                    answer_callback_query(callback_id, "No photo found on this message")
+                    print(f"  [approvals] approve for '{label}' but the original message has no photo or video attached")
+                    answer_callback_query(callback_id, "No photo or video found on this message")
                     continue
 
                 largest_photo = photos[-1]
