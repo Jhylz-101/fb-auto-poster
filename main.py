@@ -146,6 +146,12 @@ def get_articles_from_feed(feed_url, limit=6):
         text = response.content.decode("utf-8", errors="replace")
         text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text)
 
+        # Also fix bare, unescaped '&' characters — a very common RSS bug
+        # (e.g. "Tom & Jerry" instead of "Tom &amp; Jerry") that produces
+        # the same "not well-formed (invalid token)" parse error. Only
+        # escape '&' that ISN'T already the start of a valid XML entity.
+        text = re.sub(r"&(?!amp;|lt;|gt;|quot;|apos;|#\d+;|#x[0-9a-fA-F]+;)", "&amp;", text)
+
         root = ET.fromstring(text)
         items = root.findall(".//item")[:limit]
         articles = []
