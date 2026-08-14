@@ -7,7 +7,7 @@ import os
 import base64
 import html as html_lib
 import xml.etree.ElementTree as ET
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from io import BytesIO
 from datetime import datetime, timedelta
 from collections import Counter
@@ -165,8 +165,27 @@ def get_articles_from_feed(feed_url, limit=6):
                             published_dt = datetime.fromtimestamp(time.mktime(published_struct))
                         except Exception:
                             published_dt = None
+
+                    image_url = None
+                    media_thumb = entry.get("media_thumbnail")
+                    if media_thumb and isinstance(media_thumb, list) and media_thumb[0].get("url"):
+                        image_url = media_thumb[0]["url"]
+                    if not image_url:
+                        media_content = entry.get("media_content")
+                        if media_content and isinstance(media_content, list) and media_content[0].get("url"):
+                            image_url = media_content[0]["url"]
+                    if not image_url:
+                        for link_obj in entry.get("links", []):
+                            if link_obj.get("rel") == "enclosure" and str(link_obj.get("type", "")).startswith("image"):
+                                image_url = link_obj.get("href")
+                                break
+                    if not image_url and desc_raw:
+                        img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', desc_raw)
+                        if img_match:
+                            image_url = img_match.group(1)
+
                     if title:
-                        articles.append({"title": title, "description": desc, "link": link, "position": position, "published": published_dt})
+                        articles.append({"title": title, "description": desc, "link": link, "position": position, "published": published_dt, "image_url": image_url})
                 if articles:
                     return articles
         except ImportError:
@@ -200,8 +219,22 @@ def get_articles_from_feed(feed_url, limit=6):
                         published_dt = published_dt.replace(tzinfo=None)
                 except Exception:
                     published_dt = None
+
+            image_url = None
+            enclosure_el = item.find("enclosure")
+            if enclosure_el is not None and str(enclosure_el.get("type", "")).startswith("image"):
+                image_url = enclosure_el.get("url")
+            if not image_url:
+                media_thumb_el = item.find("{http://search.yahoo.com/mrss/}thumbnail")
+                if media_thumb_el is not None:
+                    image_url = media_thumb_el.get("url")
+            if not image_url and desc_raw:
+                img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', desc_raw)
+                if img_match:
+                    image_url = img_match.group(1)
+
             if title:
-                articles.append({"title": title.strip(), "description": desc, "link": link, "position": position, "published": published_dt})
+                articles.append({"title": title.strip(), "description": desc, "link": link, "position": position, "published": published_dt, "image_url": image_url})
         return articles
     except Exception as e:
         print(f"  [feed error] {feed_url} -> {type(e).__name__}: {e}")
@@ -2418,21 +2451,24 @@ def build_reel_script(max_items=8):
     fixed count -- on a heavy news day, extra headlines simply don't
     make the cut rather than forcing everything into 90 seconds.
     Returns (lines, headlines_used, headlines_available, est_seconds)
-    where lines is the ordered list of individual script segments (each
-    one destined to become its own audio clip + visual for sync). Does
-    NOT send to Telegram or run voice/video."""
+    where lines is an ordered list of {"text": str, "image_url": str_or_None}
+    dicts -- image_url is the source article's photo for headline lines
+    (used for the black/white/red visual treatment), and None for
+    structural lines (intro, road watch, fuel, weather, currency, outro),
+    which fall back to a styled branded background. Does NOT send to
+    Telegram or run voice/video."""
     candidates = build_reel_headline_pool(max_items=max_items, sports_slots=1)
 
-    fixed_lines = [REEL_INTRO_LINE]
+    fixed_lines = [{"text": REEL_INTRO_LINE, "image_url": None, "category": "intro"}]
 
     road_line = build_reel_road_narration_line()
     if road_line:
-        fixed_lines.append(road_line)
+        fixed_lines.append({"text": road_line, "image_url": None, "category": "road"})
 
     if is_monday():
         fuel_line = get_fuel_narration_line()
         if fuel_line:
-            fixed_lines.append(fuel_line)
+            fixed_lines.append({"text": fuel_line, "image_url": None, "category": "fuel"})
 
     # Slow day: pad with weather + currency so the reel isn't thin,
     # per Joel's instruction to fill with local weather/currency/gold
@@ -2440,13 +2476,13 @@ def build_reel_script(max_items=8):
     if len(candidates) < 3:
         weather_line = get_weather_narration_line()
         if weather_line:
-            fixed_lines.append(weather_line)
+            fixed_lines.append({"text": weather_line, "image_url": None, "category": "weather"})
         currency_line = get_currency_narration_line()
         if currency_line:
-            fixed_lines.append(currency_line)
+            fixed_lines.append({"text": currency_line, "image_url": None, "category": "currency"})
 
-    def word_count(text_lines):
-        return sum(len(line.split()) for line in text_lines)
+    def word_count(line_dicts):
+        return sum(len(d["text"].split()) for d in line_dicts)
 
     outro_words = len(REEL_OUTRO_LINE.split())
     headline_lines = []
@@ -2455,19 +2491,20 @@ def build_reel_script(max_items=8):
     for i, article in enumerate(candidates):
         sentence = headline_to_sentence(article)
         if i == 0:
-            line = sentence
+            text = sentence
         else:
-            line = CONNECTORS[connector_i % len(CONNECTORS)] + sentence
+            text = CONNECTORS[connector_i % len(CONNECTORS)] + sentence
             connector_i += 1
 
-        projected = word_count(fixed_lines) + word_count(headline_lines) + len(line.split()) + outro_words
+        projected = word_count(fixed_lines) + word_count(headline_lines) + len(text.split()) + outro_words
         if projected > REEL_WORD_BUDGET and len(headline_lines) > 0:
             # Budget reached -- stop here rather than cramming the rest in.
             break
-        headline_lines.append(line)
+        category = "sports" if is_sports_article(article) else "news"
+        headline_lines.append({"text": text, "image_url": article.get("image_url"), "category": category})
 
-    all_lines = fixed_lines + headline_lines + [REEL_OUTRO_LINE]
-    script_text = " ".join(all_lines)
+    all_lines = fixed_lines + headline_lines + [{"text": REEL_OUTRO_LINE, "image_url": None, "category": "outro"}]
+    script_text = " ".join(d["text"] for d in all_lines)
     est_seconds = round(len(script_text.split()) / REEL_WORDS_PER_SECOND)
 
     return all_lines, len(headline_lines), len(candidates), est_seconds
@@ -2476,7 +2513,7 @@ def build_reel_script_text(max_items=8):
     """Convenience wrapper for callers that just want the joined script
     text (e.g. the Telegram review message) without the per-line list."""
     all_lines, headlines_used, headlines_available, est_seconds = build_reel_script(max_items=max_items)
-    script_text = " ".join(all_lines)
+    script_text = " ".join(d["text"] for d in all_lines)
     return script_text, headlines_used, headlines_available, est_seconds
 
 # ---------- Reel Visual Frames (place-aware backgrounds + burned-in captions) ----------
@@ -2505,9 +2542,62 @@ def reel_background_prompt_for_line(line):
         return f"aerial cinematic view of {place}, Benguet Philippines, misty mountains, golden hour lighting, minimalist"
     return REEL_BRANDED_BG_PROMPT
 
-def build_reel_frame_html(line_text, bg_data_uri):
+REEL_DUOTONE_BLACK = "#0a0a0a"
+REEL_DUOTONE_WHITE = "#f5f0e8"
+REEL_DUOTONE_RED = "#c9302c"
+REEL_ACCENT_YELLOW = "#e8b923"
+
+def fetch_image_from_url(url):
+    try:
+        response = requests.get(url, headers=FEED_HEADERS, timeout=15)
+        response.raise_for_status()
+        img = Image.open(BytesIO(response.content)).convert("RGB")
+        return img
+    except Exception as e:
+        print(f"  [reel frame] could not fetch article image {url}: {e}")
+        return None
+
+def apply_red_duotone(img, target_width=None, target_height=None):
+    """Bold black/white/red editorial treatment: cover-fit crop to the
+    frame size, grayscale, then colorize on a black-to-red-to-white ramp."""
+    target_width = target_width or REEL_WIDTH
+    target_height = target_height or REEL_HEIGHT
+
+    img_ratio = img.width / img.height
+    target_ratio = target_width / target_height
+    if img_ratio > target_ratio:
+        new_height = target_height
+        new_width = max(target_width, int(img_ratio * new_height))
+    else:
+        new_width = target_width
+        new_height = max(target_height, int(new_width / img_ratio))
+    img_resized = img.resize((new_width, new_height))
+
+    left = (new_width - target_width) // 2
+    top = (new_height - target_height) // 2
+    img_cropped = img_resized.crop((left, top, left + target_width, top + target_height))
+
+    grayscale = img_cropped.convert("L")
+    duotone = ImageOps.colorize(grayscale, black=REEL_DUOTONE_BLACK, white=REEL_DUOTONE_WHITE, mid=REEL_DUOTONE_RED)
+    return duotone.convert("RGB")
+
+REEL_CATEGORY_TAGS = {
+    "road": ("ROAD WATCH", REEL_DUOTONE_RED),
+    "news": ("BREAKING", REEL_DUOTONE_RED),
+    "fuel": ("FUEL WATCH", REEL_ACCENT_YELLOW),
+    "weather": ("WEATHER", REEL_ACCENT_YELLOW),
+    "currency": ("MARKET WATCH", REEL_ACCENT_YELLOW),
+    "sports": ("SPORTS", REEL_ACCENT_YELLOW),
+}
+
+def build_reel_frame_html(line_text, bg_data_uri, tag_label=None, tag_color=None):
     """Vertical (1080x1920) frame: background image, dark gradient for
-    caption readability, burned-in caption text lower-third."""
+    caption readability, burned-in caption text lower-third, and an
+    optional category tag pill (red = urgent, yellow = advisory)."""
+    tag_html = ""
+    if tag_label:
+        tag_html = f'<div class="tag" style="background:{tag_color};">{tag_label}</div>'
+
     html_out = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -2515,7 +2605,7 @@ def build_reel_frame_html(line_text, bg_data_uri):
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;600;700;800&display=swap');
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ width:{REEL_WIDTH}px; height:{REEL_HEIGHT}px; position:relative; font-family:'Archivo',sans-serif; background:#14181c; }}
+  body {{ width:{REEL_WIDTH}px; height:{REEL_HEIGHT}px; position:relative; font-family:'Archivo',sans-serif; background:#0a0a0a; }}
 
   .bg {{
     position:absolute; inset:0;
@@ -2523,18 +2613,23 @@ def build_reel_frame_html(line_text, bg_data_uri):
   }}
   .overlay {{
     position:absolute; inset:0;
-    background: linear-gradient(180deg, rgba(10,14,18,0.15) 0%, rgba(10,14,18,0.20) 50%, rgba(10,14,18,0.85) 100%);
+    background: linear-gradient(180deg, rgba(10,10,10,0.20) 0%, rgba(10,10,10,0.25) 50%, rgba(10,10,10,0.88) 100%);
   }}
 
   .brandbar {{
-    position:absolute; top:70px; left:60px; color:#fff; font-size:26px;
-    font-weight:800; letter-spacing:3px; text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+    position:absolute; top:70px; left:60px; color:{REEL_DUOTONE_RED}; font-size:26px;
+    font-weight:800; letter-spacing:3px; text-shadow: 0 2px 10px rgba(0,0,0,0.6);
+  }}
+
+  .tag {{
+    position:absolute; top:64px; right:60px; color:#0a0a0a; font-weight:800; font-size:22px;
+    letter-spacing:2px; padding:12px 22px; border-radius:6px;
   }}
 
   .caption {{
     position:absolute; left:60px; right:60px; bottom:180px;
     color:#fff; font-family:'Archivo Black',sans-serif; font-size:58px; line-height:1.28;
-    text-shadow: 0 4px 24px rgba(0,0,0,0.7);
+    text-shadow: 0 4px 24px rgba(0,0,0,0.8);
   }}
 </style>
 </head>
@@ -2542,23 +2637,41 @@ def build_reel_frame_html(line_text, bg_data_uri):
   <div class="bg"></div>
   <div class="overlay"></div>
   <div class="brandbar">BENGUET DAILY UPDATE</div>
+  {tag_html}
   <div class="caption">{line_text}</div>
 </body>
 </html>"""
     return html_out
 
-def generate_reel_frame_image(line_text):
+def generate_reel_frame_image(line_text, image_url=None, category=None):
     """Generates one vertical frame (PNG bytes buffer) for a single
-    script line: place-aware or branded background + burned-in caption."""
-    prompt = reel_background_prompt_for_line(line_text)
-    try:
-        bg_img = generate_background(prompt, height=REEL_HEIGHT)
-        bg_data_uri = image_to_data_uri(bg_img)
-    except Exception as e:
-        print(f"  [reel frame] background generation failed for '{line_text[:40]}': {e}")
-        bg_data_uri = ""
+    script line. If image_url is given (the source article's own photo),
+    fetches and applies the black/white/red duotone treatment. Otherwise
+    falls back to a place-aware or branded AI-generated background, with
+    the same duotone treatment applied for visual consistency across the
+    whole reel. category (if provided) adds a red/yellow tag pill --
+    red for urgent content (road, breaking news), yellow for advisory
+    content (fuel, weather, market, sports)."""
+    duotone_img = None
 
-    html_out = build_reel_frame_html(line_text, bg_data_uri)
+    if image_url:
+        fetched = fetch_image_from_url(image_url)
+        if fetched:
+            duotone_img = apply_red_duotone(fetched)
+
+    if duotone_img is None:
+        prompt = reel_background_prompt_for_line(line_text)
+        try:
+            bg_img = generate_background(prompt, height=REEL_HEIGHT)
+            duotone_img = apply_red_duotone(bg_img)
+        except Exception as e:
+            print(f"  [reel frame] background generation failed for '{line_text[:40]}': {e}")
+            duotone_img = None
+
+    bg_data_uri = image_to_data_uri(duotone_img) if duotone_img is not None else ""
+
+    tag_label, tag_color = REEL_CATEGORY_TAGS.get(category, (None, None))
+    html_out = build_reel_frame_html(line_text, bg_data_uri, tag_label=tag_label, tag_color=tag_color)
     buffer = render_html_to_png(html_out, width=REEL_WIDTH, height=REEL_HEIGHT)
     return buffer
 
