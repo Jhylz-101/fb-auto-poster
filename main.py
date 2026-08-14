@@ -360,7 +360,7 @@ def build_weather_html():
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700&display=swap');
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; position:relative; overflow:hidden; background:#1c2b33; }}
+  body {{ width:1080px; min-height:900px; font-family:'Archivo',sans-serif; position:relative; background:#1c2b33; }}
 
   .sky {{
     position:absolute; inset:0;
@@ -373,31 +373,31 @@ def build_weather_html():
     background-image: repeating-linear-gradient(100deg, transparent 0 18px, rgba(200,225,245,0.5) 18px 19px, transparent 19px 46px);
   }}
 
-  .content {{ position:relative; z-index:2; padding:56px 76px 46px; height:100%; display:flex; flex-direction:column; }}
+  .content {{ position:relative; z-index:2; padding:60px 76px 54px; }}
 
-  .eyebrow {{ color:#8fb8d4; font-size:20px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
-  .title {{ font-family:'Archivo Black',sans-serif; color:#fdfdfb; font-size:60px; line-height:1.02; margin-top:12px; text-transform:uppercase; }}
-  .date {{ color:#c9dcea; font-size:22px; margin-top:14px; font-weight:500; }}
+  .eyebrow {{ color:#a8d0ea; font-size:24px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Archivo Black',sans-serif; color:#fdfdfb; font-size:64px; line-height:1.05; margin-top:14px; text-transform:uppercase; }}
+  .date {{ color:#d8e8f2; font-size:26px; margin-top:16px; font-weight:500; }}
 
   .alertbar {{
-    margin-top:32px; background:#e8a33d; color:#241a05; border-radius:14px;
-    padding:18px 28px; display:flex; align-items:center; gap:16px;
+    margin-top:36px; background:#e8a33d; color:#241a05; border-radius:14px;
+    padding:22px 30px; display:flex; align-items:center; gap:18px;
   }}
-  .alertbar .dot {{ width:14px; height:14px; border-radius:50%; background:#241a05; flex-shrink:0; }}
-  .alertbar .txt {{ font-size:23px; font-weight:700; line-height:1.25; }}
+  .alertbar .dot {{ width:16px; height:16px; border-radius:50%; background:#241a05; flex-shrink:0; }}
+  .alertbar .txt {{ font-size:27px; font-weight:700; line-height:1.3; }}
 
-  .body {{ margin-top:28px; background:rgba(12,22,28,0.55); border:1px solid rgba(255,255,255,0.12); border-radius:18px; padding:34px 38px; backdrop-filter: blur(2px); }}
-  .body p {{ color:#eef4f8; font-size:24px; line-height:1.48; font-weight:400; }}
-  .body p + p {{ margin-top:18px; }}
+  .body {{ margin-top:32px; background:rgba(12,22,28,0.55); border:1px solid rgba(255,255,255,0.12); border-radius:18px; padding:38px 42px; backdrop-filter: blur(2px); }}
+  .body p {{ color:#f2f7fa; font-size:28px; line-height:1.55; font-weight:400; }}
+  .body p + p {{ margin-top:20px; }}
   .body b {{ color:#ffd98a; font-weight:700; }}
 
-  .towns {{ margin-top:28px; display:grid; grid-template-columns:1fr 1fr; gap:16px 30px; }}
-  .town {{ color:#eef4f8; font-size:27px; font-weight:600; display:flex; align-items:center; gap:10px; }}
-  .town::before {{ content:''; width:9px; height:9px; border-radius:50%; background:#5b9bd5; flex-shrink:0; }}
+  .towns {{ margin-top:32px; display:grid; grid-template-columns:1fr 1fr; gap:20px 32px; }}
+  .town {{ color:#f2f7fa; font-size:31px; font-weight:600; display:flex; align-items:center; gap:12px; }}
+  .town::before {{ content:''; width:11px; height:11px; border-radius:50%; background:#6fb3e8; flex-shrink:0; }}
 
-  .footer {{ margin-top:auto; display:flex; justify-content:space-between; align-items:flex-end; padding-top:26px; }}
-  .brand {{ color:#7fa6bd; font-size:20px; font-weight:700; letter-spacing:2px; }}
-  .advice {{ color:#ffd98a; font-size:19px; font-weight:600; text-align:right; max-width:460px; line-height:1.4; }}
+  .footer {{ margin-top:40px; display:flex; justify-content:space-between; align-items:flex-end; padding-top:30px; }}
+  .brand {{ color:#a8c8dc; font-size:24px; font-weight:700; letter-spacing:2px; }}
+  .advice {{ color:#ffd98a; font-size:22px; font-weight:600; text-align:right; max-width:480px; line-height:1.45; }}
 </style>
 </head>
 <body>
@@ -430,7 +430,7 @@ def build_weather_caption(para1, para2):
 
 def build_weather_image():
     html, para1, para2, rainy = build_weather_html()
-    buffer = render_html_to_png(html)
+    buffer = render_html_to_png_dynamic(html)
     caption = build_weather_caption(para1, para2)
     return buffer, caption
 
@@ -465,7 +465,7 @@ def build_currency_gold_html():
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700;900&family=Archivo:wght@400;500;600;700&display=swap');
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#122019; position:relative; overflow:hidden; }}
+  body {{ width:1080px; min-height:900px; font-family:'Archivo',sans-serif; background:#122019; position:relative; }}
 
   .bg {{
     position:absolute; inset:0;
@@ -478,33 +478,33 @@ def build_currency_gold_html():
   .r1 {{ width:900px; height:900px; top:-260px; right:-320px; }}
   .r2 {{ width:600px; height:600px; bottom:-200px; left:-200px; }}
 
-  .content {{ position:relative; z-index:2; padding:76px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+  .content {{ position:relative; z-index:2; padding:76px; }}
 
-  .eyebrow {{ color:#c9a94f; font-size:22px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
-  .title {{ font-family:'Fraunces',serif; font-weight:900; color:#f7f2e3; font-size:66px; line-height:1.05; margin-top:14px; }}
-  .date {{ color:#a9c2b3; font-size:24px; margin-top:14px; font-weight:500; }}
+  .eyebrow {{ color:#dcc06a; font-size:24px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Fraunces',serif; font-weight:900; color:#f7f2e3; font-size:70px; line-height:1.05; margin-top:16px; }}
+  .date {{ color:#c2ddd0; font-size:27px; margin-top:16px; font-weight:500; }}
 
-  .cards {{ margin-top:56px; display:flex; flex-direction:column; gap:28px; }}
+  .cards {{ margin-top:56px; display:flex; flex-direction:column; gap:30px; }}
   .card {{
-    background:rgba(247,242,227,0.04); border:1px solid rgba(212,175,55,0.35);
-    border-radius:22px; padding:40px 42px; display:flex; justify-content:space-between; align-items:center;
+    background:rgba(247,242,227,0.05); border:1px solid rgba(212,175,55,0.4);
+    border-radius:22px; padding:44px 46px; display:flex; justify-content:space-between; align-items:center;
   }}
-  .card .label {{ color:#cfead9; font-size:26px; font-weight:600; letter-spacing:1px; }}
-  .card .sub {{ color:#8fae9d; font-size:19px; margin-top:8px; }}
+  .card .label {{ color:#e2f5ea; font-size:29px; font-weight:600; letter-spacing:1px; }}
+  .card .sub {{ color:#a8c9b8; font-size:21px; margin-top:10px; }}
   .card .valuewrap {{ text-align:right; }}
-  .card .value {{ font-family:'Fraunces',serif; font-weight:700; color:#e9c25f; font-size:52px; }}
+  .card .value {{ font-family:'Fraunces',serif; font-weight:700; color:#f0cd6e; font-size:58px; }}
   .trendbadge {{
-    display:inline-flex; align-items:center; gap:8px; margin-top:14px;
-    padding:8px 16px; border-radius:20px; font-size:16px; font-weight:800; letter-spacing:0.5px;
+    display:inline-flex; align-items:center; gap:9px; margin-top:16px;
+    padding:10px 18px; border-radius:20px; font-size:18px; font-weight:800; letter-spacing:0.5px;
   }}
-  .trendbadge .arrow {{ font-size:18px; }}
+  .trendbadge .arrow {{ font-size:20px; }}
 
-  .note {{ margin-top:40px; color:#a9c2b3; font-size:22px; line-height:1.5; }}
-  .note b {{ color:#e9c25f; }}
+  .note {{ margin-top:44px; color:#c2ddd0; font-size:24px; line-height:1.55; }}
+  .note b {{ color:#f0cd6e; }}
 
-  .footer {{ margin-top:60px; display:flex; justify-content:space-between; align-items:flex-end; }}
-  .brand {{ color:#7d9689; font-size:22px; font-weight:700; letter-spacing:2px; }}
-  .tag {{ color:#e9c25f; font-size:20px; font-weight:600; }}
+  .footer {{ margin-top:56px; display:flex; justify-content:space-between; align-items:flex-end; }}
+  .brand {{ color:#a8c2b5; font-size:24px; font-weight:700; letter-spacing:2px; }}
+  .tag {{ color:#f0cd6e; font-size:22px; font-weight:600; }}
 </style>
 </head>
 <body>
@@ -562,7 +562,7 @@ def build_currency_gold_caption(usd_rate, gold_price, usd_trend, gold_trend):
 
 def build_currency_gold_image():
     html_out, usd_rate, gold_price, usd_trend, gold_trend = build_currency_gold_html()
-    buffer = render_html_to_png(html_out)
+    buffer = render_html_to_png_dynamic(html_out)
     caption = build_currency_gold_caption(usd_rate, gold_price, usd_trend, gold_trend)
     save_current_prices(usd_rate, gold_price)
     return buffer, caption
@@ -944,40 +944,40 @@ def build_fuel_html():
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#171310; position:relative; overflow:hidden; }}
+  body {{ width:1080px; min-height:900px; font-family:'Archivo',sans-serif; background:#171310; position:relative; }}
 
   .bg {{
     position:absolute; inset:0;
     background: linear-gradient(160deg, #14100d 0%, #1e1712 60%, #241b14 100%);
   }}
 
-  .content {{ position:relative; z-index:2; padding:70px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+  .content {{ position:relative; z-index:2; padding:64px 70px 58px; }}
 
-  .eyebrow {{ color:#c9a15a; font-size:20px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
-  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:52px; line-height:1.05; margin-top:14px; }}
-  .date {{ color:#a9a09c; font-size:22px; margin-top:14px; font-weight:500; }}
-  .subhead {{ color:#d8d2c6; font-size:22px; margin-top:24px; }}
+  .eyebrow {{ color:#dcb670; font-size:24px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:56px; line-height:1.05; margin-top:16px; }}
+  .date {{ color:#c2bab2; font-size:26px; margin-top:16px; font-weight:500; }}
+  .subhead {{ color:#e8e2d6; font-size:26px; margin-top:26px; }}
 
-  .rows {{ margin-top:36px; display:flex; flex-direction:column; gap:22px; }}
+  .rows {{ margin-top:38px; display:flex; flex-direction:column; gap:26px; }}
   .row {{
-    display:flex; align-items:center; gap:20px; background:rgba(247,242,227,0.04);
-    border:1px solid rgba(247,242,227,0.14); border-radius:18px; padding:26px 30px;
+    display:flex; align-items:center; gap:22px; background:rgba(247,242,227,0.05);
+    border:1px solid rgba(247,242,227,0.16); border-radius:18px; padding:32px 34px;
   }}
   .rowlabel {{
-    color:#171310; font-weight:800; font-size:24px; padding:14px 22px; border-radius:10px;
-    min-width:170px; text-align:center;
+    color:#171310; font-weight:800; font-size:27px; padding:16px 24px; border-radius:10px;
+    min-width:190px; text-align:center;
   }}
-  .rowvalues {{ flex:1; display:flex; flex-direction:column; gap:6px; }}
-  .rangeline {{ font-size:24px; font-weight:700; }}
-  .up {{ color:#e05252; }}
-  .down {{ color:#4caf50; }}
-  .rowarrow {{ font-size:44px; font-weight:800; }}
+  .rowvalues {{ flex:1; display:flex; flex-direction:column; gap:8px; }}
+  .rangeline {{ font-size:28px; font-weight:700; }}
+  .up {{ color:#ea6767; }}
+  .down {{ color:#5fc46b; }}
+  .rowarrow {{ font-size:48px; font-weight:800; }}
 
-  .note {{ margin-top:34px; color:#a9a09c; font-size:19px; line-height:1.5; }}
+  .note {{ margin-top:38px; color:#c2bab2; font-size:22px; line-height:1.55; }}
 
-  .footer {{ margin-top:auto; padding-top:40px; display:flex; justify-content:space-between; align-items:flex-end; }}
-  .brand {{ color:#8a8078; font-size:20px; font-weight:700; letter-spacing:2px; }}
-  .tag {{ color:#c9a15a; font-size:18px; font-weight:600; }}
+  .footer {{ margin-top:44px; padding-top:34px; display:flex; justify-content:space-between; align-items:flex-end; }}
+  .brand {{ color:#a8a098; font-size:24px; font-weight:700; letter-spacing:2px; }}
+  .tag {{ color:#dcb670; font-size:21px; font-weight:600; }}
 </style>
 </head>
 <body>
@@ -1018,7 +1018,7 @@ def build_fuel_html():
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#171310; position:relative; overflow:hidden; }}
+  body {{ width:1080px; min-height:900px; font-family:'Archivo',sans-serif; background:#171310; position:relative; }}
 
   .bg {{
     position:absolute; inset:0;
@@ -1027,30 +1027,30 @@ def build_fuel_html():
       linear-gradient(160deg, #14100d 0%, #1e1712 60%, #241b14 100%);
   }}
 
-  .content {{ position:relative; z-index:2; padding:76px; height:100%; display:flex; flex-direction:column; justify-content:center; }}
+  .content {{ position:relative; z-index:2; padding:76px; }}
 
-  .eyebrow {{ color:#c9a15a; font-size:22px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
-  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:58px; line-height:1.05; margin-top:14px; }}
-  .date {{ color:#a9a09c; font-size:24px; margin-top:14px; font-weight:500; }}
+  .eyebrow {{ color:#dcb670; font-size:24px; letter-spacing:6px; font-weight:600; text-transform:uppercase; }}
+  .title {{ font-family:'Archivo Black',sans-serif; color:#f7f2e3; font-size:62px; line-height:1.05; margin-top:16px; }}
+  .date {{ color:#c2bab2; font-size:27px; margin-top:16px; font-weight:500; }}
 
   .badge {{
-    margin-top:44px; align-self:flex-start;
-    background:{style["color"]}; color:#171310; font-weight:800; font-size:24px; letter-spacing:2px;
-    padding:14px 28px; border-radius:8px; display:flex; align-items:center; gap:12px;
+    margin-top:48px; align-self:flex-start;
+    background:{style["color"]}; color:#171310; font-weight:800; font-size:27px; letter-spacing:2px;
+    padding:16px 30px; border-radius:8px; display:inline-flex; align-items:center; gap:14px;
   }}
-  .badge .arrow {{ font-size:26px; }}
+  .badge .arrow {{ font-size:29px; }}
 
-  .headline {{ margin-top:40px; color:#f0ece5; font-size:32px; line-height:1.4; font-weight:600; }}
+  .headline {{ margin-top:44px; color:#f5f1ea; font-size:36px; line-height:1.45; font-weight:600; }}
 
   .advice {{
-    margin-top:36px; background:rgba(247,242,227,0.05); border:1px solid {style["color"]}55;
-    border-radius:18px; padding:34px 38px; color:#d8d2c6; font-size:24px; line-height:1.55;
+    margin-top:40px; background:rgba(247,242,227,0.06); border:1px solid {style["color"]}55;
+    border-radius:18px; padding:38px 42px; color:#e2dcd0; font-size:27px; line-height:1.6;
   }}
   .advice b {{ color:{style["color"]}; }}
 
-  .footer {{ margin-top:60px; display:flex; justify-content:space-between; align-items:flex-end; }}
-  .brand {{ color:#8a8078; font-size:22px; font-weight:700; letter-spacing:2px; }}
-  .tag {{ color:{style["color"]}; font-size:20px; font-weight:600; }}
+  .footer {{ margin-top:56px; display:flex; justify-content:space-between; align-items:flex-end; }}
+  .brand {{ color:#a8a098; font-size:24px; font-weight:700; letter-spacing:2px; }}
+  .tag {{ color:{style["color"]}; font-size:22px; font-weight:600; }}
 </style>
 </head>
 <body>
@@ -1106,7 +1106,7 @@ def build_fuel_caption_fallback(direction, headline, link, source_label):
 
 def build_fuel_image():
     html_out, mode, data, link, source_label = build_fuel_html()
-    buffer = render_html_to_png(html_out)
+    buffer = render_html_to_png_dynamic(html_out)
     if mode == "specific":
         caption = build_fuel_specific_caption(data, link, source_label)
     else:
