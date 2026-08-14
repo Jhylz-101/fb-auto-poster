@@ -209,7 +209,9 @@ ENTERTAINMENT_KEYWORDS = [
     "kpop", "k-pop", "bts", "blackpink", "showbiz", "celebrity", "actress",
     "actor ", "album", "music video", "concert", "artista", "teleserye",
     "movie premiere", "red carpet", "boy group", "girl group", "idol group",
-    "gma network star", "abs-cbn star", "kapamilya", "kapuso star"
+    "gma network star", "abs-cbn star", "kapamilya", "kapuso star",
+    "wedding", "engaged", "engagement", "dating rumors", "breakup",
+    "love team", "romance rumors", "taylor swift", "hollywood"
 ]
 
 def is_entertainment_article(article):
@@ -2191,6 +2193,14 @@ def build_reel_headline_pool(max_items=8, sports_slots=1):
     Joel's confirmation, not a spec he gave explicitly."""
     articles = gather_reel_article_pool()
 
+    # Road advisories are excluded here entirely -- they're often reported
+    # across several near-duplicate articles (same closure, different
+    # posts), which used to eat multiple headline slots with repetitive
+    # content. Road Status Watch already merges these properly; the reel
+    # gets ONE consolidated road line via build_reel_road_narration_line()
+    # instead (see build_reel_script).
+    articles = [a for a in articles if not is_road_article(a)]
+
     local_general = [a for a in articles if is_local_article(a) and not is_sports_article(a)]
     national_general = [a for a in articles if not is_local_article(a) and not is_sports_article(a)]
     local_sports = [a for a in articles if is_local_article(a) and is_sports_article(a)]
@@ -2297,17 +2307,54 @@ def headline_to_sentence(article):
         title += "."
     return title
 
+def build_reel_road_narration_line():
+    """One consolidated, spoken-friendly road-status line, reusing the
+    same merged data your Road Status Watch post already produces --
+    instead of the reel treating each raw road article as its own
+    headline (which caused near-duplicate lines pulled from separate
+    articles about the same closure)."""
+    try:
+        status = get_road_status()
+        if not status or not status.get("statuses"):
+            return None
+
+        statuses = status["statuses"]
+        closed_roads = [r for r, info in statuses.items() if normalize_road_info(info)["status"] == "closed"]
+        one_lane_roads = [r for r, info in statuses.items() if normalize_road_info(info)["status"] == "one_lane"]
+
+        if closed_roads:
+            named = closed_roads[:2]
+            names = " and ".join(named) if len(named) <= 2 else ", ".join(named)
+            remainder = len(closed_roads) - len(named)
+            extra = f", plus {remainder} other road{'s' if remainder != 1 else ''}" if remainder > 0 else ""
+            verb = "remain" if len(named) > 1 or remainder > 0 else "remains"
+            return f"Road watch: {names}{extra} {verb} closed or not passable due to continued rains."
+        elif one_lane_roads:
+            named = one_lane_roads[:2]
+            names = " and ".join(named) if len(named) <= 2 else ", ".join(named)
+            verb = "are" if len(named) > 1 else "is"
+            return f"Road watch: {names} {verb} open but limited to one-lane traffic."
+        else:
+            return "Road watch: all tracked roads across Benguet remain passable today."
+    except Exception as e:
+        print(f"  [reel filler] road line failed: {e}")
+        return None
+
 REEL_INTRO_LINE = "Good morning, Benguet. Here's what's happening today."
 REEL_OUTRO_LINE = "That's your update for today. Stay safe, and we'll see you tomorrow."
 
 def build_reel_script(max_items=8):
-    """Builds the full narration script draft: intro, Monday fuel line if
-    applicable, headlines (with weather/currency filler on slow days),
-    outro. Returns (script_text, headline_count, is_heavy_day) -- does
-    NOT send to Telegram or run voice/video, that's a separate step."""
+    """Builds the full narration script draft: intro, road watch line,
+    Monday fuel line if applicable, headlines (with weather/currency
+    filler on slow days), outro. Returns (script_text, headline_count,
+    is_heavy_day) -- does NOT send to Telegram or run voice/video."""
     headlines = build_reel_headline_pool(max_items=max_items, sports_slots=1)
 
     lines = [REEL_INTRO_LINE]
+
+    road_line = build_reel_road_narration_line()
+    if road_line:
+        lines.append(road_line)
 
     if is_monday():
         fuel_line = get_fuel_narration_line()
