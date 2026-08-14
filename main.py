@@ -2415,8 +2415,10 @@ def build_reel_script(max_items=8):
     days), outro. Headline count is driven by a ~85s time budget, not a
     fixed count -- on a heavy news day, extra headlines simply don't
     make the cut rather than forcing everything into 90 seconds.
-    Returns (script_text, headlines_used, headlines_available,
-    est_seconds). Does NOT send to Telegram or run voice/video."""
+    Returns (lines, headlines_used, headlines_available, est_seconds)
+    where lines is the ordered list of individual script segments (each
+    one destined to become its own audio clip + visual for sync). Does
+    NOT send to Telegram or run voice/video."""
     candidates = build_reel_headline_pool(max_items=max_items, sports_slots=1)
 
     fixed_lines = [REEL_INTRO_LINE]
@@ -2466,7 +2468,14 @@ def build_reel_script(max_items=8):
     script_text = " ".join(all_lines)
     est_seconds = round(len(script_text.split()) / REEL_WORDS_PER_SECOND)
 
-    return script_text, len(headline_lines), len(candidates), est_seconds
+    return all_lines, len(headline_lines), len(candidates), est_seconds
+
+def build_reel_script_text(max_items=8):
+    """Convenience wrapper for callers that just want the joined script
+    text (e.g. the Telegram review message) without the per-line list."""
+    all_lines, headlines_used, headlines_available, est_seconds = build_reel_script(max_items=max_items)
+    script_text = " ".join(all_lines)
+    return script_text, headlines_used, headlines_available, est_seconds
 
 if __name__ == "__main__":
     seed_fuel_state_if_empty()
