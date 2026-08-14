@@ -871,7 +871,7 @@ def get_fuel_estimates():
     print("  [fuel scan] no specific per-liter estimates found from any source this run — not falling back to vague commentary")
     return {}, None
 
-def get_fuel_status():
+def get_fuel_status(report_is_new=False):
     """Combines fresh scanning with persisted state: if this run finds a
     genuinely new article (different link than what's stored), it becomes
     the new current status and the old one is kept as previous. If nothing
@@ -896,7 +896,7 @@ def get_fuel_status():
             "found_date": datetime.now().strftime("%B %d, %Y")
         }
         save_fuel_state(state)
-        return state["current"]
+        return (state["current"], True) if report_is_new else state["current"]
 
     if not fresh_estimates and fresh_article and is_new:
         direction = classify_fuel_direction(fresh_article)
@@ -912,14 +912,14 @@ def get_fuel_status():
             "found_date": datetime.now().strftime("%B %d, %Y")
         }
         save_fuel_state(state)
-        return state["current"]
+        return (state["current"], True) if report_is_new else state["current"]
 
     if stored_current:
         print(f"  [fuel state] no new update this run, reusing status from {stored_current.get('found_date', 'earlier')}")
-        return stored_current
+        return (stored_current, False) if report_is_new else stored_current
 
     print("  [fuel state] no data found this run and nothing stored previously")
-    return None
+    return (None, False) if report_is_new else None
 
 FUEL_COLORS = {
     "Diesel": "#4caf50",
@@ -946,8 +946,9 @@ FUEL_STYLE = {
     }
 }
 
-def build_fuel_html():
-    status = get_fuel_status()
+def build_fuel_html(status=None):
+    if status is None:
+        status = get_fuel_status()
     today = datetime.now().strftime("%B %d, %Y")
 
     if status is None:
