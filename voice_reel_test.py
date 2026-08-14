@@ -10,7 +10,7 @@ from main import build_reel_script, send_text_message
 BOT_TOKEN = "8919908599:AAGTBdy69N5NFXY5KTIMhTkO7q2VpOXwYa8"
 CHAT_ID = "7898015877"
 
-VOICE_ID = "en-PH-JamesNeural"
+VOICE_ID = "en-US-GuyNeural"
 PAUSE_SECONDS = 0.4
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -61,7 +61,7 @@ def send_voice_note(file_path, caption):
         print("  [telegram] narration sent OK")
 
 async def main():
-    send_text_message("🎙️ Building full narration with James — generating each line, this may take a minute...")
+    send_text_message("🎙️ Building full narration with Guy — generating each line, this may take a minute...")
 
     lines, headlines_used, headlines_available, est_seconds = build_reel_script()
     print(f"  [voice test] {len(lines)} lines to synthesize")
@@ -83,7 +83,7 @@ async def main():
     actual_duration = get_audio_duration(final_path)
     duration_label = f"~{round(actual_duration)}s (actual)" if actual_duration else f"~{est_seconds}s (estimated)"
 
-    send_voice_note(final_path, f"Full narration — James — {duration_label}, {len(lines)} lines")
+    send_voice_note(final_path, f"Full narration — Guy — {duration_label}, {len(lines)} lines")
     send_text_message(f"✅ Narration sent. Length: {duration_label}. Reply if pacing/pauses feel right or need adjusting.")
 
 if __name__ == "__main__":
