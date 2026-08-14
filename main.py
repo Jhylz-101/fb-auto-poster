@@ -2501,7 +2501,10 @@ def build_reel_script(max_items=8):
             # Budget reached -- stop here rather than cramming the rest in.
             break
         category = "sports" if is_sports_article(article) else "news"
-        headline_lines.append({"text": text, "image_url": article.get("image_url"), "category": category})
+        image_url = article.get("image_url")
+        if not image_url and article.get("link"):
+            image_url = fetch_og_image(article["link"])
+        headline_lines.append({"text": text, "image_url": image_url, "category": category})
 
     all_lines = fixed_lines + headline_lines + [{"text": REEL_OUTRO_LINE, "image_url": None, "category": "outro"}]
     script_text = " ".join(d["text"] for d in all_lines)
@@ -2547,6 +2550,25 @@ REEL_DUOTONE_WHITE = "#f5f0e8"
 REEL_DUOTONE_RED = "#c9302c"
 REEL_ACCENT_YELLOW = "#e8b923"
 
+def fetch_og_image(article_url):
+    """Fallback for when the RSS feed itself doesn't include a photo:
+    fetches the actual article page and pulls its og:image meta tag,
+    which is the same image most sites show when the link is shared."""
+    if not article_url:
+        return None
+    try:
+        response = requests.get(article_url, headers=FEED_HEADERS, timeout=10)
+        response.raise_for_status()
+        html_text = response.text
+        match = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html_text, re.IGNORECASE)
+        if not match:
+            match = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', html_text, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    except Exception as e:
+        print(f"  [reel frame] og:image fetch failed for {article_url}: {e}")
+    return None
+
 def fetch_image_from_url(url):
     try:
         response = requests.get(url, headers=FEED_HEADERS, timeout=15)
@@ -2557,9 +2579,10 @@ def fetch_image_from_url(url):
         print(f"  [reel frame] could not fetch article image {url}: {e}")
         return None
 
-def apply_red_duotone(img, target_width=None, target_height=None):
-    """Bold black/white/red editorial treatment: cover-fit crop to the
-    frame size, grayscale, then colorize on a black-to-red-to-white ramp."""
+def apply_bw_treatment(img, target_width=None, target_height=None):
+    """True black-and-white treatment: cover-fit crop to the frame size,
+    then grayscale -- no color tint, so caption text (yellow) is what
+    carries the accent color instead of the photo itself."""
     target_width = target_width or REEL_WIDTH
     target_height = target_height or REEL_HEIGHT
 
@@ -2578,8 +2601,7 @@ def apply_red_duotone(img, target_width=None, target_height=None):
     img_cropped = img_resized.crop((left, top, left + target_width, top + target_height))
 
     grayscale = img_cropped.convert("L")
-    duotone = ImageOps.colorize(grayscale, black=REEL_DUOTONE_BLACK, white=REEL_DUOTONE_WHITE, mid=REEL_DUOTONE_RED)
-    return duotone.convert("RGB")
+    return grayscale.convert("RGB")
 
 REEL_CATEGORY_TAGS = {
     "road": ("ROAD WATCH", REEL_DUOTONE_RED),
@@ -2628,7 +2650,7 @@ def build_reel_frame_html(line_text, bg_data_uri, tag_label=None, tag_color=None
 
   .caption {{
     position:absolute; left:60px; right:60px; bottom:180px;
-    color:#fff; font-family:'Archivo Black',sans-serif; font-size:58px; line-height:1.28;
+    color:{REEL_ACCENT_YELLOW}; font-family:'Archivo Black',sans-serif; font-size:58px; line-height:1.28;
     text-shadow: 0 4px 24px rgba(0,0,0,0.8);
   }}
 </style>
@@ -2646,29 +2668,30 @@ def build_reel_frame_html(line_text, bg_data_uri, tag_label=None, tag_color=None
 def generate_reel_frame_image(line_text, image_url=None, category=None):
     """Generates one vertical frame (PNG bytes buffer) for a single
     script line. If image_url is given (the source article's own photo),
-    fetches and applies the black/white/red duotone treatment. Otherwise
+    fetches and applies a true black-and-white treatment. Otherwise
     falls back to a place-aware or branded AI-generated background, with
-    the same duotone treatment applied for visual consistency across the
-    whole reel. category (if provided) adds a red/yellow tag pill --
-    red for urgent content (road, breaking news), yellow for advisory
-    content (fuel, weather, market, sports)."""
-    duotone_img = None
+    the same black-and-white treatment applied for visual consistency
+    across the whole reel. category (if provided) adds a red/yellow tag
+    pill -- red for urgent content (road, breaking news), yellow for
+    advisory content (fuel, weather, market, sports). Caption text is
+    yellow, which is where the accent color now lives."""
+    bw_img = None
 
     if image_url:
         fetched = fetch_image_from_url(image_url)
         if fetched:
-            duotone_img = apply_red_duotone(fetched)
+            bw_img = apply_bw_treatment(fetched)
 
-    if duotone_img is None:
+    if bw_img is None:
         prompt = reel_background_prompt_for_line(line_text)
         try:
             bg_img = generate_background(prompt, height=REEL_HEIGHT)
-            duotone_img = apply_red_duotone(bg_img)
+            bw_img = apply_bw_treatment(bg_img)
         except Exception as e:
             print(f"  [reel frame] background generation failed for '{line_text[:40]}': {e}")
-            duotone_img = None
+            bw_img = None
 
-    bg_data_uri = image_to_data_uri(duotone_img) if duotone_img is not None else ""
+    bg_data_uri = image_to_data_uri(bw_img) if bw_img is not None else ""
 
     tag_label, tag_color = REEL_CATEGORY_TAGS.get(category, (None, None))
     html_out = build_reel_frame_html(line_text, bg_data_uri, tag_label=tag_label, tag_color=tag_color)
