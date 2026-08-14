@@ -1668,6 +1668,11 @@ def send_video_for_approval(video_path, label, caption=None):
     the reel video. Sent from a file path (not a buffer) since video
     files are large enough that keeping them on disk is safer than
     holding the whole thing in memory."""
+    file_size = os.path.getsize(video_path) if os.path.exists(video_path) else 0
+    print(f"  [telegram] '{label}' video file size: {file_size:,} bytes")
+    if file_size < 10_000:
+        print(f"  [telegram WARNING] '{label}' video file is suspiciously small ({file_size} bytes) -- likely a failed/empty encode, not a real video")
+
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendVideo"
     keyboard = {
         "inline_keyboard": [[
@@ -1686,6 +1691,13 @@ def send_video_for_approval(video_path, label, caption=None):
             data["caption"] = caption
         response = requests.post(url, files=files, data=data, timeout=180)
     result = response.json()
+    # Full response logged regardless of ok/not-ok -- a silent partial
+    # success (ok:true but no "video" key in the resulting message) is
+    # exactly the kind of failure that's otherwise invisible.
+    has_video_attached = bool(result.get("result", {}).get("video"))
+    print(f"  [telegram] '{label}' sendVideo response ok={result.get('ok')}, video attached={has_video_attached}")
+    if not has_video_attached:
+        print(f"  [telegram] '{label}' FULL response (video missing from result): {result}")
     if not result.get("ok"):
         print(f"  [telegram ERROR] '{label}' video failed: {result}")
     else:
@@ -1904,6 +1916,8 @@ def process_telegram_approvals():
 
                 if not photos:
                     print(f"  [approvals] approve for '{label}' but the original message has no photo or video attached")
+                    print(f"  [approvals] full message keys present: {list(message.keys())}")
+                    print(f"  [approvals] full message object: {message}")
                     answer_callback_query(callback_id, "No photo or video found on this message")
                     continue
 
