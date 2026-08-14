@@ -69,10 +69,11 @@ async def main():
     make_silence_clip("/tmp/reel_silence.mp3", PAUSE_SECONDS)
 
     segment_paths = []
-    for i, line in enumerate(lines):
+    for i, line_obj in enumerate(lines):
+        text = line_obj["text"]
         seg_path = f"/tmp/reel_seg_{i}.mp3"
-        print(f"  [voice test] synthesizing line {i}: {line[:60]}")
-        await synthesize_line(line, seg_path)
+        print(f"  [voice test] synthesizing line {i}: {text[:60]}")
+        await synthesize_line(text, seg_path)
         segment_paths.append(seg_path)
         if i < len(lines) - 1:
             segment_paths.append("/tmp/reel_silence.mp3")
