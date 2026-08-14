@@ -2297,6 +2297,27 @@ def is_explainer_style(article):
             return True
     return False
 
+# Known recurring opinion/commentary columns -- these get published as
+# regular articles but aren't news, they're a named columnist's take.
+# This list is necessarily incomplete (impossible to know every outlet's
+# column names in advance) -- Joel should flag more as he spots them.
+FEATURE_COLUMN_NAMES = [
+    "hindi ito marites",
+]
+
+def is_feature_or_column_style(article):
+    """Catches survey/feature-style headlines (e.g. '59% of Filipino
+    workers happy with salary...') and known named opinion columns --
+    real published content, but 'back of the newspaper' material, not
+    headline news."""
+    title = article["title"].strip().lower()
+    if re.match(r"^\d+%", title):
+        return True
+    for col_name in FEATURE_COLUMN_NAMES:
+        if title.startswith(col_name):
+            return True
+    return False
+
 def build_reel_headline_pool(max_items=8):
     """Selects up to max_items headlines in clear priority tiers, per
     Joel's explicit ordering:
@@ -2319,6 +2340,10 @@ def build_reel_headline_pool(max_items=8):
     # Explainer/opinion/question-format pieces excluded -- not real
     # headlines, and Joel flagged real examples of these slipping through.
     articles = [a for a in articles if not is_explainer_style(a)]
+
+    # Feature/survey pieces and known opinion columns excluded -- real
+    # articles, but not headline news.
+    articles = [a for a in articles if not is_feature_or_column_style(a)]
 
     local_general = [a for a in articles if is_local_article(a) and not is_sports_article(a)]
     local_sports = [a for a in articles if is_local_article(a) and is_sports_article(a)]
