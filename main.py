@@ -1122,33 +1122,22 @@ def truncate_text(text, max_len=340):
     return text[:max_len].rsplit(" ", 1)[0] + "…"
 
 def compute_news_layout(articles):
-    """Sizes tuned for showing up to 3 equally-weighted headlines that
-    fill the full 1080x1350 canvas with readable text throughout."""
+    """Fixed, generously large sizes — no shrink-to-fit needed since the
+    image now grows in height to fit the content instead of forcing
+    everything into one fixed-size canvas."""
     count = max(len(articles), 1)
-    total_len = sum(len(a["title"]) + len(a.get("description", "")) for a in articles) if articles else 0
-    avg_len = total_len / count
-
-    scale = 1.0
-    if avg_len > 220:
-        scale -= 0.10
-    elif avg_len > 150:
-        scale -= 0.05
-
-    scale = max(0.78, min(1.0, scale))
-
     return {
-        "scale": scale,
-        "title_size": round(44 * scale),
-        "date_size": round(20 * scale),
-        "brand_size": round(20 * scale),
-        "num_size": round(24 * scale),
-        "headline_size": round(33 * scale),
-        "snippet_size": round(21 * scale),
-        "source_size": round(16 * scale),
-        "footer_size": round(17 * scale),
-        "card_pad": round(34 * scale),
-        "card_gap": round(24 * scale),
-        "snippet_max_len": round(170 * (1.0 if count <= 1 else max(0.65, 1.0 - (count - 1) * 0.12))),
+        "title_size": 54,
+        "date_size": 24,
+        "brand_size": 24,
+        "num_size": 30,
+        "headline_size": 40,
+        "snippet_size": 26,
+        "source_size": 20,
+        "footer_size": 20,
+        "card_pad": 40,
+        "card_gap": 28,
+        "snippet_max_len": round(220 * (1.0 if count <= 1 else max(0.75, 1.0 - (count - 1) * 0.1))),
     }
 
 def build_news_html(articles):
@@ -1185,44 +1174,44 @@ def build_news_html(articles):
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
   * {{ margin:0; padding:0; box-sizing:border-box; }}
-  body {{ width:1080px; height:1350px; font-family:'Archivo',sans-serif; background:#141414; position:relative; overflow:hidden; }}
+  body {{ width:1080px; min-height:900px; font-family:'Archivo',sans-serif; background:#141414; position:relative; }}
 
   .bg {{ position:absolute; inset:0; background: linear-gradient(180deg, #0d0d0d 0%, #1a1414 55%, #241412 100%); }}
   .texture {{ position:absolute; inset:0; opacity:0.06; background-image: repeating-linear-gradient(0deg, #fff 0 1px, transparent 1px 3px); }}
 
-  .content {{ position:relative; z-index:2; height:100%; display:flex; flex-direction:column; padding:44px 60px 42px; }}
+  .content {{ position:relative; z-index:2; padding:56px 60px 50px; }}
 
   .topbar {{ display:flex; justify-content:space-between; align-items:center; }}
-  .brand {{ color:#b02e26; font-size:{layout["brand_size"]}px; font-weight:800; letter-spacing:3px; }}
-  .date {{ color:#9a9a9a; font-size:{layout["date_size"]}px; font-weight:500; }}
+  .brand {{ color:#c9453c; font-size:{layout["brand_size"]}px; font-weight:800; letter-spacing:3px; }}
+  .date {{ color:#b0b0b0; font-size:{layout["date_size"]}px; font-weight:500; }}
 
   .title {{
     font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:{layout["title_size"]}px;
-    margin-top:20px; text-transform:uppercase; letter-spacing:1px;
+    margin-top:24px; text-transform:uppercase; letter-spacing:1px;
   }}
 
-  .cards {{ flex:1; display:flex; flex-direction:column; justify-content:space-between; gap:{layout["card_gap"]}px; margin-top:28px; }}
+  .cards {{ display:flex; flex-direction:column; gap:{layout["card_gap"]}px; margin-top:32px; }}
 
   .card {{
-    background:rgba(247,242,227,0.04); border:1px solid #3a3a3a; border-radius:16px;
-    padding:{layout["card_pad"]}px; flex:1; display:flex; flex-direction:column; justify-content:center;
+    background:rgba(247,242,227,0.05); border:1px solid #3a3a3a; border-radius:18px;
+    padding:{layout["card_pad"]}px;
   }}
-  .cardtop {{ display:flex; align-items:center; gap:14px; }}
+  .cardtop {{ display:flex; align-items:center; gap:16px; }}
   .num {{
-    background:#b02e26; color:#fff; font-weight:800; font-size:{layout["num_size"]}px;
+    background:#c9453c; color:#fff; font-weight:800; font-size:{layout["num_size"]}px;
     width:{round(layout["num_size"]*1.7)}px; height:{round(layout["num_size"]*1.7)}px; border-radius:50%;
     display:flex; align-items:center; justify-content:center; flex-shrink:0;
   }}
   .tag {{ color:#f0a97a; font-size:{layout["source_size"]}px; font-weight:700; letter-spacing:2px; }}
   .headline {{
-    color:#f7f4ee; font-size:{layout["headline_size"]}px; font-weight:700; line-height:1.25;
-    margin-top:14px;
+    color:#f7f4ee; font-size:{layout["headline_size"]}px; font-weight:700; line-height:1.28;
+    margin-top:18px;
   }}
-  .snippet {{ color:#c9c3ba; font-size:{layout["snippet_size"]}px; line-height:1.45; margin-top:12px; }}
-  .source {{ color:#7a7a7a; font-size:{layout["source_size"]}px; margin-top:14px; font-weight:600; }}
+  .snippet {{ color:#d5cfc4; font-size:{layout["snippet_size"]}px; line-height:1.55; margin-top:16px; }}
+  .source {{ color:#9a9a9a; font-size:{layout["source_size"]}px; margin-top:18px; font-weight:600; }}
 
-  .footer {{ margin-top:24px; display:flex; justify-content:space-between; align-items:center; padding-top:20px; border-top:1px solid #3a3a3a; }}
-  .footerbrand {{ color:#8a8078; font-size:{layout["footer_size"]}px; font-weight:700; letter-spacing:2px; }}
+  .footer {{ margin-top:32px; display:flex; justify-content:space-between; align-items:center; padding-top:26px; border-top:1px solid #3a3a3a; }}
+  .footerbrand {{ color:#a8a098; font-size:{layout["footer_size"]}px; font-weight:700; letter-spacing:2px; }}
   .footertag {{ color:#f0a97a; font-size:{layout["footer_size"]}px; font-weight:700; }}
 </style>
 </head>
@@ -1365,7 +1354,7 @@ def build_news_image():
     articles = gather_news()
     top3 = build_diversified_top3(articles)
     html_out = build_news_html(top3)
-    buffer = render_html_to_png(html_out)
+    buffer = render_html_to_png_dynamic(html_out)
     caption = build_news_caption(articles)
     return buffer, caption
 
