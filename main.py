@@ -62,15 +62,23 @@ def get_forex_rate():
         raise RuntimeError(f"ExchangeRate-API did not return conversion_rates: {data}")
     return data["conversion_rates"]["PHP"]
 
-def get_gold_price():
-    url = "https://www.goldapi.io/api/XAU/PHP"
-    headers = {"x-access-token": GOLD_API_KEY}
-    response = requests.get(url, headers=headers)
+def get_gold_price(usd_to_php_rate):
+    """Uses gold-api.com (free, no key, no rate limit) instead of GoldAPI.io,
+    since that one's free tier kept hitting its monthly quota. gold-api.com
+    doesn't support PHP directly, so we pull the USD/troy-oz spot price and
+    convert to PHP/gram ourselves using the forex rate we already have."""
+    url = "https://api.gold-api.com/price/XAU"
+    response = requests.get(url, timeout=15)
     data = response.json()
-    if "price_gram_24k" not in data:
+    if "price" not in data:
         print(f"  [gold error] unexpected response (status {response.status_code}): {data}")
-        raise RuntimeError(f"GoldAPI did not return price_gram_24k: {data}")
-    return data["price_gram_24k"]
+        raise RuntimeError(f"gold-api.com did not return a price: {data}")
+
+    usd_per_troy_oz = data["price"]
+    TROY_OZ_TO_GRAMS = 31.1034768
+    usd_per_gram = usd_per_troy_oz / TROY_OZ_TO_GRAMS
+    php_per_gram_24k = usd_per_gram * usd_to_php_rate
+    return php_per_gram_24k
 
 PRICE_HISTORY_FILE = "/data/price_history.json"
 
@@ -438,7 +446,7 @@ def build_weather_image():
 
 def build_currency_gold_html():
     usd_rate = get_forex_rate()
-    gold_price = get_gold_price()
+    gold_price = get_gold_price(usd_rate)
     today = datetime.now().strftime("%B %d, %Y")
 
     previous = load_previous_prices()
