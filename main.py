@@ -2278,12 +2278,15 @@ def is_too_similar_to_selected(article, selected):
             return True
     return False
 
-def build_reel_headline_pool(max_items=8, sports_slots=1):
-    """Selects up to max_items headlines: Benguet/Cordillera general news
-    first, national general news fills remaining slots, and a reserved
-    number of sports_slots go to sports coverage (local sports preferred,
-    national sports as fallback) -- this ratio is an assumption pending
-    Joel's confirmation, not a spec he gave explicitly."""
+def build_reel_headline_pool(max_items=8):
+    """Selects up to max_items headlines in clear priority tiers, per
+    Joel's explicit ordering:
+    1. Benguet/Cordillera -- general news and sports together, local
+       always wins regardless of type.
+    2. National general news.
+    3. National sports.
+    No fixed sports quota -- sports coverage is prioritized by locality
+    like everything else, not given a reserved slot count."""
     articles = gather_reel_article_pool()
 
     # Road advisories are excluded here entirely -- they're often reported
@@ -2295,42 +2298,35 @@ def build_reel_headline_pool(max_items=8, sports_slots=1):
     articles = [a for a in articles if not is_road_article(a)]
 
     local_general = [a for a in articles if is_local_article(a) and not is_sports_article(a)]
-    national_general = [a for a in articles if not is_local_article(a) and not is_sports_article(a)]
     local_sports = [a for a in articles if is_local_article(a) and is_sports_article(a)]
+    national_general = [a for a in articles if not is_local_article(a) and not is_sports_article(a)]
     national_sports = [a for a in articles if not is_local_article(a) and is_sports_article(a)]
 
     selected = []
     selected_titles = set()
 
     def add(article):
+        if len(selected) >= max_items:
+            return
         key = article["title"].strip().lower()
-        if key in selected_titles or len(selected) >= max_items:
+        if key in selected_titles:
             return
         if is_too_similar_to_selected(article, selected):
             return
         selected.append(article)
         selected_titles.add(key)
 
-    general_slots = max_items - sports_slots
-
-    for a in local_general:
-        if len([s for s in selected if not is_sports_article(s)]) >= general_slots:
-            break
+    # Tier 1: Benguet/Cordillera -- general and sports together, local wins.
+    for a in local_general + local_sports:
         add(a)
+
+    # Tier 2: national general news.
     for a in national_general:
-        if len([s for s in selected if not is_sports_article(s)]) >= general_slots:
-            break
         add(a)
 
-    sports_pool = local_sports if local_sports else national_sports
-    for a in sports_pool[:sports_slots]:
+    # Tier 3: national sports.
+    for a in national_sports:
         add(a)
-
-    # If sports coverage wasn't available at all, let general news fill
-    # those leftover slots instead of coming up short.
-    if len(selected) < max_items:
-        for a in national_general:
-            add(a)
 
     return selected
 
@@ -2457,7 +2453,7 @@ def build_reel_script(max_items=8):
     structural lines (intro, road watch, fuel, weather, currency, outro),
     which fall back to a styled branded background. Does NOT send to
     Telegram or run voice/video."""
-    candidates = build_reel_headline_pool(max_items=max_items, sports_slots=1)
+    candidates = build_reel_headline_pool(max_items=max_items)
 
     fixed_lines = [{"text": REEL_INTRO_LINE, "image_url": None, "category": "intro"}]
 
