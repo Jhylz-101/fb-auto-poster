@@ -2278,6 +2278,25 @@ def is_too_similar_to_selected(article, selected):
             return True
     return False
 
+EXPLAINER_TITLE_PATTERNS = [
+    r"^why\s", r"^how\s", r"^what\s", r"^when\s", r"^who\s", r"^where\s",
+    r"^making sense of", r"^explainer:", r"^analysis:", r"^opinion:",
+    r"^commentary:", r"^here's why", r"^here's how", r"^in case you missed it"
+]
+
+def is_explainer_style(article):
+    """Catches question-format headlines and explainer/analysis pieces
+    (e.g. 'Why is Maya likely to keep its transfer fee?', 'Making sense
+    of KKR's offer on First Gen') -- these are opinion/analysis content,
+    not straight news headlines, and read oddly as spoken narration."""
+    title = article["title"].strip().lower()
+    if title.endswith("?"):
+        return True
+    for pattern in EXPLAINER_TITLE_PATTERNS:
+        if re.match(pattern, title):
+            return True
+    return False
+
 def build_reel_headline_pool(max_items=8):
     """Selects up to max_items headlines in clear priority tiers, per
     Joel's explicit ordering:
@@ -2296,6 +2315,10 @@ def build_reel_headline_pool(max_items=8):
     # gets ONE consolidated road line via build_reel_road_narration_line()
     # instead (see build_reel_script).
     articles = [a for a in articles if not is_road_article(a)]
+
+    # Explainer/opinion/question-format pieces excluded -- not real
+    # headlines, and Joel flagged real examples of these slipping through.
+    articles = [a for a in articles if not is_explainer_style(a)]
 
     local_general = [a for a in articles if is_local_article(a) and not is_sports_article(a)]
     local_sports = [a for a in articles if is_local_article(a) and is_sports_article(a)]
