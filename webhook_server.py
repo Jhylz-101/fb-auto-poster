@@ -1,10 +1,52 @@
 import os
+import subprocess
+import glob
 from flask import Flask, request, jsonify
 from main import (
     BOT_TOKEN, answer_callback_query, send_text_message,
     get_telegram_file_bytes, post_to_facebook,
     send_photo_for_approval, build_custom_news_image
 )
+
+
+def ensure_playwright_browser_installed():
+    """Railway's build-time RAILPACK_PYTHON_PLAYWRIGHT_INSTALL env var
+    doesn't always reliably install the Chromium binary on every service
+    (build caching, layer ordering, etc). Rather than depend on that build
+    step working correctly, check for the actual browser binary at process
+    startup and install it on the spot if it's missing. This runs once per
+    deploy (a fresh container has nothing cached) and adds roughly 20-40
+    seconds to the very first startup, but every request after that is
+    normal speed."""
+    cache_dir = os.path.expanduser("~/.cache/ms-playwright")
+    chromium_dirs = glob.glob(os.path.join(cache_dir, "chromium*"))
+
+    browser_found = False
+    for d in chromium_dirs:
+        matches = glob.glob(os.path.join(d, "**", "chrome*"), recursive=True)
+        if matches:
+            browser_found = True
+            break
+
+    if browser_found:
+        print("  [playwright check] Chromium binary found, skipping install")
+        return
+
+    print("  [playwright check] Chromium binary not found — installing now, this may take a minute...")
+    try:
+        result = subprocess.run(
+            ["playwright", "install", "chromium"],
+            capture_output=True, text=True, timeout=300
+        )
+        if result.returncode == 0:
+            print("  [playwright check] Chromium installed successfully")
+        else:
+            print(f"  [playwright check] install failed (exit {result.returncode}): {result.stderr[-1000:]}")
+    except Exception as e:
+        print(f"  [playwright check] install crashed: {e}")
+
+
+ensure_playwright_browser_installed()
 
 app = Flask(__name__)
 
