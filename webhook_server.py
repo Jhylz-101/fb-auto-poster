@@ -4,7 +4,7 @@ import glob
 from flask import Flask, request, jsonify
 from main import (
     BOT_TOKEN, answer_callback_query, send_text_message,
-    get_telegram_file_bytes, post_to_facebook,
+    get_telegram_file_bytes, post_to_facebook, post_reel_to_facebook,
     send_photo_for_approval, build_custom_news_image
 )
 
@@ -60,11 +60,36 @@ def handle_callback(callback):
             label = data[len("approve_"):]
             message = callback.get("message", {})
             photos = message.get("photo", [])
+            video = message.get("video")
             caption = message.get("caption", "")
 
+            if video:
+                print(f"  [webhook] approve for '{label}' — video message")
+                video_bytes = get_telegram_file_bytes(video["file_id"])
+
+                if not video_bytes:
+                    print(f"  [webhook] approve for '{label}' but could not download video")
+                    answer_callback_query(callback_id, "Could not download video — check logs")
+                    return
+
+                print(f"  [webhook] approving '{label}' — posting Reel to Facebook")
+                result = post_reel_to_facebook(video_bytes, caption)
+                if result.get("success") or result.get("video_id"):
+                    print(f"  [webhook] '{label}' Reel posted to Facebook successfully: {result}")
+                    answer_callback_query(callback_id, "Posted to Facebook!")
+                    send_text_message(f"✅ '{label}' approved and posted to Facebook as a Reel.")
+                else:
+                    print(f"  [webhook] '{label}' Facebook Reel post FAILED: {result}")
+                    answer_callback_query(callback_id, "Facebook Reel post failed — check logs")
+                    error_info = result.get("error", result)
+                    error_text = error_info.get("message", str(error_info)) if isinstance(error_info, dict) else str(error_info)
+                    send_text_message(f"⚠️ '{label}' approved but Facebook Reel post failed: {error_text}")
+                return
+
             if not photos:
-                print(f"  [webhook] approve for '{label}' but no photo on message")
-                answer_callback_query(callback_id, "No photo found on this message")
+                print(f"  [webhook] approve for '{label}' but no photo or video on message")
+                print(f"  [webhook] full message keys present: {list(message.keys())}")
+                answer_callback_query(callback_id, "No photo or video found on this message")
                 return
 
             largest_photo = photos[-1]
