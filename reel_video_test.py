@@ -20,6 +20,36 @@ async def synthesize_line(text, output_path):
     communicate = edge_tts.Communicate(text, VOICE_ID)
     await communicate.save(output_path)
 
+async def synthesize_all_audio(lines):
+    """Runs ONLY the async edge_tts calls, isolated in their own event
+    loop, with no Playwright/sync calls happening anywhere inside this
+    coroutine -- that mixing is what caused the previous crash."""
+    seg_paths = []
+    for i, line_obj in enumerate(lines):
+        text = line_obj["text"]
+        seg_path = f"/tmp/reel_seg_{i}.mp3"
+        print(f"  [reel video] synthesizing audio {i}: {text[:60]}")
+        await synthesize_line(text, seg_path)
+        seg_paths.append(seg_path)
+    return seg_paths
+
+def generate_all_frames(lines):
+    """Runs ONLY the sync Playwright frame generation, with no asyncio
+    event loop active at all -- called before asyncio.run() ever starts,
+    so there's no conflict."""
+    frame_paths = []
+    for i, line_obj in enumerate(lines):
+        text = line_obj["text"]
+        image_url = line_obj.get("image_url")
+        category = line_obj.get("category")
+        print(f"  [reel video] generating frame {i}: {text[:60]}")
+        buffer = generate_reel_frame_image(text, image_url=image_url, category=category)
+        frame_path = f"/tmp/reel_frame_{i}.png"
+        with open(frame_path, "wb") as f:
+            f.write(buffer.read())
+        frame_paths.append(frame_path)
+    return frame_paths
+
 def make_silence_clip(path, seconds):
     subprocess.run(
         [FFMPEG, "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
@@ -87,40 +117,34 @@ def send_video(file_path, caption):
     else:
         print("  [telegram] video sent OK")
 
-async def main():
+def main():
     send_text_message("🎬 Building the full reel — voice, visuals, and video assembly. This will take several minutes, please wait...")
 
     lines, headlines_used, headlines_available, est_seconds = build_reel_script()
     n = len(lines)
     print(f"  [reel video] {n} lines to process")
 
+    # Phase 1: all frames, sync, no event loop active.
+    frame_paths = generate_all_frames(lines)
+
+    # Phase 2: all audio, async, isolated event loop, no Playwright calls inside it.
+    seg_audio_paths = asyncio.run(synthesize_all_audio(lines))
+
+    # Phase 3: back in sync code -- measure durations, build clips, stitch.
     make_silence_clip("/tmp/reel_silence.mp3", PAUSE_SECONDS)
 
     audio_segment_paths = []
     video_clip_paths = []
 
-    for i, line_obj in enumerate(lines):
-        text = line_obj["text"]
-        image_url = line_obj.get("image_url")
-        category = line_obj.get("category")
-
-        print(f"  [reel video] line {i}/{n}: {text[:60]}")
-
-        seg_audio_path = f"/tmp/reel_seg_{i}.mp3"
-        await synthesize_line(text, seg_audio_path)
-        seg_duration = get_media_duration(seg_audio_path) or 3.0
+    for i in range(n):
+        seg_duration = get_media_duration(seg_audio_paths[i]) or 3.0
         clip_duration = seg_duration + (PAUSE_SECONDS if i < n - 1 else 0)
 
-        frame_buffer = generate_reel_frame_image(text, image_url=image_url, category=category)
-        frame_path = f"/tmp/reel_frame_{i}.png"
-        with open(frame_path, "wb") as f:
-            f.write(frame_buffer.read())
-
         clip_path = f"/tmp/reel_clip_{i}.mp4"
-        make_frame_video_clip(frame_path, clip_duration, clip_path)
+        make_frame_video_clip(frame_paths[i], clip_duration, clip_path)
         video_clip_paths.append(clip_path)
 
-        audio_segment_paths.append(seg_audio_path)
+        audio_segment_paths.append(seg_audio_paths[i])
         if i < n - 1:
             audio_segment_paths.append("/tmp/reel_silence.mp3")
 
@@ -143,4 +167,4 @@ async def main():
     send_text_message(f"✅ Reel video sent. Length: {duration_label}. Reply with feedback or 'ready' if this looks good for Facebook.")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
