@@ -3,3 +3,4 @@ Pillow
 playwright
 flask
 feedparser
+edge-tts
