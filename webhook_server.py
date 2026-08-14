@@ -2,7 +2,8 @@ import os
 from flask import Flask, request, jsonify
 from main import (
     BOT_TOKEN, answer_callback_query, send_text_message,
-    get_telegram_file_bytes, post_to_facebook
+    get_telegram_file_bytes, post_to_facebook,
+    send_photo_for_approval, build_custom_news_image
 )
 
 app = Flask(__name__)
@@ -55,12 +56,47 @@ def handle_callback(callback):
         print(f"  [webhook] error handling callback: {e}")
 
 
+def handle_message(message):
+    """Handles plain text messages sent to the bot (not button presses).
+    Any non-command text of reasonable length is treated as a news
+    narrative to turn into a themed post."""
+    text = message.get("text", "")
+
+    if not text or text.startswith("/"):
+        return
+
+    if len(text.strip()) < 20:
+        send_text_message(
+            "Send the full news text — headline on the first line, then the "
+            "story below it — and I'll turn it into a post."
+        )
+        return
+
+    send_text_message("📝 Got it — building the post now, one moment...")
+
+    try:
+        img_buffer, caption, label = build_custom_news_image(text)
+        send_photo_for_approval(
+            img_buffer, label, filename="update.png", mime="image/png", caption=caption
+        )
+        print(f"  [webhook] custom news post '{label}' sent for approval")
+    except Exception as e:
+        print(f"  [webhook] custom news post failed: {e}")
+        send_text_message(f"⚠️ Couldn't build that post — {e}")
+
+
 @app.route("/telegram-webhook", methods=["POST"])
 def telegram_webhook():
     update = request.get_json(force=True, silent=True) or {}
+
     callback = update.get("callback_query")
     if callback:
         handle_callback(callback)
+
+    message = update.get("message")
+    if message:
+        handle_message(message)
+
     return jsonify({"ok": True})
 
 
