@@ -1436,9 +1436,38 @@ def classify_custom_news_category(text):
             return category
     return "general"
 
+def render_custom_news_body_html(body):
+    """Splits the pasted body into blocks: consecutive bullet lines
+    (starting with • or -) become a multi-column grid so short items
+    (like municipality names) don't waste horizontal space stacked one
+    per line; everything else renders as a normal paragraph."""
+    lines = body.split("\n")
+    blocks = []
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i].strip()
+        if not line:
+            i += 1
+            continue
+        if line.startswith("•") or line.startswith("-"):
+            items = []
+            while i < n and (lines[i].strip().startswith("•") or lines[i].strip().startswith("-")):
+                item_text = lines[i].strip().lstrip("•").lstrip("-").strip()
+                if item_text:
+                    items.append(item_text)
+                i += 1
+            items_html = "".join(f'<div class="bulletitem">{item}</div>' for item in items)
+            blocks.append(f'<div class="bulletgrid">{items_html}</div>')
+        else:
+            blocks.append(f"<p>{line}</p>")
+            i += 1
+    return "".join(blocks)
+
 def build_custom_news_html(headline, body, category):
     theme = CUSTOM_NEWS_THEMES.get(category, CUSTOM_NEWS_THEMES["general"])
     today = datetime.now().strftime("%B %d, %Y")
+    body_html = render_custom_news_body_html(body)
 
     try:
         bg_img = generate_background(theme["bg_prompt"], height=1350)
@@ -1478,9 +1507,20 @@ def build_custom_news_html(headline, body, category):
 
   .rule {{ height:2px; background:{theme["color"]}66; margin:42px 0; }}
 
-  .body {{ color:#e3ded3; font-size:29px; line-height:1.65; white-space:pre-line; }}
+  .body {{ color:#e3ded3; font-size:29px; line-height:1.65; }}
   .body p {{ margin-bottom:22px; }}
   .body p:last-child {{ margin-bottom:0; }}
+
+  .bulletgrid {{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));
+    gap:14px 30px; margin:6px 0 30px 0;
+  }}
+  .bulletitem {{
+    color:#f0ece2; font-size:27px; font-weight:600; position:relative; padding-left:30px;
+  }}
+  .bulletitem::before {{
+    content:'•'; position:absolute; left:0; color:{theme["color"]}; font-weight:800; font-size:28px;
+  }}
 
   .footer {{ margin-top:52px; display:flex; justify-content:space-between; align-items:center; padding-top:36px; border-top:1px solid rgba(247,242,227,0.16); }}
   .footerbrand {{ color:#a8a098; font-size:22px; font-weight:700; letter-spacing:2px; }}
@@ -1502,7 +1542,7 @@ def build_custom_news_html(headline, body, category):
 
     <div class="rule"></div>
 
-    <div class="body">{body}</div>
+    <div class="body">{body_html}</div>
 
     <div class="footer">
       <div class="footerbrand">BENGUET DAILY UPDATE</div>
