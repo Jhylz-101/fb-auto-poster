@@ -138,7 +138,15 @@ def get_articles_from_feed(feed_url, limit=6):
     try:
         response = requests.get(feed_url, headers=FEED_HEADERS, timeout=10)
         response.raise_for_status()
-        root = ET.fromstring(response.content)
+
+        # Some feeds (e.g. tribune.net.ph) include raw control characters
+        # that are illegal in XML 1.0 and make strict parsers reject the
+        # whole feed. Strip them before parsing rather than losing the
+        # entire source over one bad character.
+        text = response.content.decode("utf-8", errors="replace")
+        text = re.sub(r"[\x00-\x08\x0B\x0C\x0E-\x1F]", "", text)
+
+        root = ET.fromstring(text)
         items = root.findall(".//item")[:limit]
         articles = []
         for position, item in enumerate(items):
@@ -777,6 +785,12 @@ def get_fuel_estimates():
         print(f"  [fuel scan] {name}: {len(articles)} articles fetched, {len(strong_matches)} passed strong filter")
         for a in strong_matches:
             print(f"    [fuel scan candidate] {name}: {a['title'][:80]}")
+
+        # If nothing passed, show what WAS there so we can tell whether the
+        # source just had no fuel content this run, or our filter is too
+        # narrow for how this particular outlet phrases things.
+        if not strong_matches and articles:
+            print(f"    [fuel scan {name} titles seen]: {[a['title'][:60] for a in articles[:8]]}")
 
         for article in articles:
             if not is_fuel_article_strong(article):
