@@ -2142,6 +2142,198 @@ def build_road_image():
     caption = build_road_caption(status)
     return buffer, caption
 
+# ---------- Reel Script Generation (headlines -> spoken narration draft) ----------
+# Builds the daily reel narration script from real, already-working data
+# sources (NEWS_SOURCES, weather, currency, fuel) -- no new APIs, no AI
+# rewrite cost. This only produces the DRAFT TEXT and sends it to Telegram
+# for Joel to read/approve. Voice synthesis and video assembly are later,
+# separate steps.
+
+SPORTS_KEYWORDS = [
+    "basketball", "volleyball", "chess", "athletics", "marathon", "pba",
+    "uaap", "ncaa", "palarong pambansa", "sportsfest", "boxing", "football",
+    "sepak takraw", "coach", "athlete", "tournament", "championship",
+    "batang pinoy", "car games", "cordillera games", "milo marathon",
+    "track and field", "cheerdance", "sports meet"
+]
+
+def is_sports_article(article):
+    text = (article["title"] + " " + article["description"]).lower()
+    return any(keyword in text for keyword in SPORTS_KEYWORDS)
+
+def gather_reel_article_pool():
+    """Fetches from the same NEWS_SOURCES feeds already used for the daily
+    news post, deduplicated by title, with excluded articles filtered out
+    the same way gather_news() does."""
+    all_articles = []
+    for name, url in NEWS_SOURCES.items():
+        articles = get_articles_from_feed(url, limit=10)
+        for article in articles:
+            all_articles.append({"source": name, **article})
+
+    all_articles = [a for a in all_articles if not is_excluded_article(a)]
+
+    seen_titles = set()
+    deduped = []
+    for a in all_articles:
+        key = a["title"].strip().lower()
+        if key in seen_titles:
+            continue
+        seen_titles.add(key)
+        deduped.append(a)
+    return deduped
+
+def build_reel_headline_pool(max_items=8, sports_slots=1):
+    """Selects up to max_items headlines: Benguet/Cordillera general news
+    first, national general news fills remaining slots, and a reserved
+    number of sports_slots go to sports coverage (local sports preferred,
+    national sports as fallback) -- this ratio is an assumption pending
+    Joel's confirmation, not a spec he gave explicitly."""
+    articles = gather_reel_article_pool()
+
+    local_general = [a for a in articles if is_local_article(a) and not is_sports_article(a)]
+    national_general = [a for a in articles if not is_local_article(a) and not is_sports_article(a)]
+    local_sports = [a for a in articles if is_local_article(a) and is_sports_article(a)]
+    national_sports = [a for a in articles if not is_local_article(a) and is_sports_article(a)]
+
+    selected = []
+    selected_titles = set()
+
+    def add(article):
+        key = article["title"].strip().lower()
+        if key not in selected_titles and len(selected) < max_items:
+            selected.append(article)
+            selected_titles.add(key)
+
+    general_slots = max_items - sports_slots
+
+    for a in local_general:
+        if len([s for s in selected if not is_sports_article(s)]) >= general_slots:
+            break
+        add(a)
+    for a in national_general:
+        if len([s for s in selected if not is_sports_article(s)]) >= general_slots:
+            break
+        add(a)
+
+    sports_pool = local_sports if local_sports else national_sports
+    for a in sports_pool[:sports_slots]:
+        add(a)
+
+    # If sports coverage wasn't available at all, let general news fill
+    # those leftover slots instead of coming up short.
+    if len(selected) < max_items:
+        for a in national_general:
+            add(a)
+
+    return selected
+
+def is_monday():
+    return datetime.now().weekday() == 0
+
+def get_weather_narration_line():
+    """Lightweight reuse of the same weather data/narrative logic used
+    for the weather post, condensed to one filler line for slow news
+    days."""
+    try:
+        weather_list = []
+        for city in CITIES:
+            data = get_weather_data(city)
+            weather_list.append({
+                "city": city,
+                "temp": data["main"]["temp"],
+                "main": data["weather"][0]["main"],
+                "desc": data["weather"][0]["description"]
+            })
+        para1, para2, rainy = generate_weather_narrative(weather_list)
+        return para1
+    except Exception as e:
+        print(f"  [reel filler] weather line failed: {e}")
+        return None
+
+def get_currency_narration_line():
+    try:
+        usd_rate = get_forex_rate()
+        gold_price = get_gold_price(usd_rate)
+        return f"The US dollar is trading at {usd_rate:.2f} pesos today, and 24-karat gold is at {gold_price:,.0f} pesos per gram."
+    except Exception as e:
+        print(f"  [reel filler] currency line failed: {e}")
+        return None
+
+def get_fuel_narration_line():
+    """Monday-only fuel update line, reusing the existing fuel state
+    without re-scanning feeds if a status was already found this run."""
+    try:
+        status = get_fuel_status()
+        if not status:
+            return None
+        if status.get("mode") == "specific":
+            estimates = status["estimates"]
+            parts = []
+            for fuel_name in ["Diesel", "Gasoline", "Kerosene"]:
+                if fuel_name not in estimates:
+                    continue
+                data = estimates[fuel_name]
+                if data.get("single", False):
+                    direction_word = "down" if data["direction"] == "down" else "up"
+                    amount = data["down"] if data["direction"] == "down" else data["up"]
+                    parts.append(f"{fuel_name} {direction_word} by {amount:.2f} pesos")
+                else:
+                    parts.append(f"{fuel_name} up to {data['up']:.2f} or down to {data['down']:.2f} pesos")
+            if not parts:
+                return None
+            return "This week's fuel price watch: " + ", ".join(parts) + " per liter."
+        else:
+            direction = status.get("direction", "unknown")
+            style = FUEL_STYLE.get(direction, FUEL_STYLE["unknown"])
+            return f"Fuel price watch: {style['badge'].lower()} this week, according to the latest DOE advisory."
+    except Exception as e:
+        print(f"  [reel filler] fuel line failed: {e}")
+        return None
+
+def headline_to_sentence(article):
+    title = article["title"].strip()
+    if not title.endswith((".", "!", "?")):
+        title += "."
+    return title
+
+REEL_INTRO_LINE = "Good morning, Benguet. Here's what's happening today."
+REEL_OUTRO_LINE = "That's your update for today. Stay safe, and we'll see you tomorrow."
+
+def build_reel_script(max_items=8):
+    """Builds the full narration script draft: intro, Monday fuel line if
+    applicable, headlines (with weather/currency filler on slow days),
+    outro. Returns (script_text, headline_count, is_heavy_day) -- does
+    NOT send to Telegram or run voice/video, that's a separate step."""
+    headlines = build_reel_headline_pool(max_items=max_items, sports_slots=1)
+
+    lines = [REEL_INTRO_LINE]
+
+    if is_monday():
+        fuel_line = get_fuel_narration_line()
+        if fuel_line:
+            lines.append(fuel_line)
+
+    # Slow day: pad with weather + currency so the reel isn't thin,
+    # per Joel's instruction to fill with local weather/currency/gold
+    # when there aren't enough genuine headlines.
+    if len(headlines) < 3:
+        weather_line = get_weather_narration_line()
+        if weather_line:
+            lines.append(weather_line)
+        currency_line = get_currency_narration_line()
+        if currency_line:
+            lines.append(currency_line)
+
+    for article in headlines:
+        lines.append(headline_to_sentence(article))
+
+    lines.append(REEL_OUTRO_LINE)
+
+    script_text = " ".join(lines)
+    is_heavy_day = len(headlines) >= 7
+    return script_text, len(headlines), is_heavy_day
+
 if __name__ == "__main__":
     seed_fuel_state_if_empty()
 
