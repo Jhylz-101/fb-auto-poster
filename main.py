@@ -2401,7 +2401,7 @@ def build_reel_road_narration_line():
         print(f"  [reel filler] road line failed: {e}")
         return None
 
-REEL_INTRO_LINE = "Good morning, Benguet. Here's what's happening today."
+REEL_INTRO_LINE = "Here's what's happening today."
 REEL_OUTRO_LINE = "That's your update for today. Stay safe, and we'll see you tomorrow."
 
 REEL_WORDS_PER_SECOND = 2.5
