@@ -2665,22 +2665,40 @@ def build_reel_frame_html(line_text, bg_data_uri, tag_label=None, tag_color=None
 </html>"""
     return html_out
 
+BRAND_BANNER_PATH = "brand_banner.png"
+
+def load_local_image(path):
+    try:
+        img = Image.open(path).convert("RGB")
+        return img
+    except Exception as e:
+        print(f"  [reel frame] could not load local brand asset {path}: {e}")
+        return None
+
 def generate_reel_frame_image(line_text, image_url=None, category=None):
     """Generates one vertical frame (PNG bytes buffer) for a single
     script line. If image_url is given (the source article's own photo),
-    fetches and applies a true black-and-white treatment. Otherwise
-    falls back to a place-aware or branded AI-generated background, with
-    the same black-and-white treatment applied for visual consistency
-    across the whole reel. category (if provided) adds a red/yellow tag
-    pill -- red for urgent content (road, breaking news), yellow for
-    advisory content (fuel, weather, market, sports). Caption text is
-    yellow, which is where the accent color now lives."""
+    fetches and applies a true black-and-white treatment. The intro
+    frame (category='intro') uses the real Benguet Watch brand banner
+    instead of an AI-generated background -- more reliable (no network
+    call that can fail) and it's the actual brand, not an approximation.
+    Everything else falls back to a place-aware or branded AI-generated
+    background, with the same black-and-white treatment applied for
+    visual consistency across the whole reel. category (if provided)
+    adds a red/yellow tag pill -- red for urgent content (road, breaking
+    news), yellow for advisory content (fuel, weather, market, sports).
+    Caption text is yellow, which is where the accent color now lives."""
     bw_img = None
 
     if image_url:
         fetched = fetch_image_from_url(image_url)
         if fetched:
             bw_img = apply_bw_treatment(fetched)
+
+    if bw_img is None and category == "intro":
+        banner_img = load_local_image(BRAND_BANNER_PATH)
+        if banner_img:
+            bw_img = apply_bw_treatment(banner_img)
 
     if bw_img is None:
         prompt = reel_background_prompt_for_line(line_text)
