@@ -12,18 +12,26 @@ CHAT_ID = "7898015877"
 
 VOICE_ID = "en-US-GuyNeural"
 PAUSE_SECONDS = 0.4
-FPS = 30
+FPS = 24
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
+
+def run_ffmpeg(args, description):
+    """Wraps subprocess calls to ffmpeg with useful error output on
+    failure, instead of just a bare traceback with no ffmpeg context."""
+    try:
+        subprocess.run(args, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        print(f"  [ffmpeg ERROR] {description} failed (exit {e.returncode})")
+        if e.stderr:
+            print(f"  [ffmpeg stderr] {e.stderr[-1000:]}")
+        raise
 
 async def synthesize_line(text, output_path):
     communicate = edge_tts.Communicate(text, VOICE_ID)
     await communicate.save(output_path)
 
 async def synthesize_all_audio(lines):
-    """Runs ONLY the async edge_tts calls, isolated in their own event
-    loop, with no Playwright/sync calls happening anywhere inside this
-    coroutine -- that mixing is what caused the previous crash."""
     seg_paths = []
     for i, line_obj in enumerate(lines):
         text = line_obj["text"]
@@ -34,9 +42,6 @@ async def synthesize_all_audio(lines):
     return seg_paths
 
 def generate_all_frames(lines):
-    """Runs ONLY the sync Playwright frame generation, with no asyncio
-    event loop active at all -- called before asyncio.run() ever starts,
-    so there's no conflict."""
     frame_paths = []
     for i, line_obj in enumerate(lines):
         text = line_obj["text"]
@@ -51,10 +56,10 @@ def generate_all_frames(lines):
     return frame_paths
 
 def make_silence_clip(path, seconds):
-    subprocess.run(
+    run_ffmpeg(
         [FFMPEG, "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
          "-t", str(seconds), "-q:a", "9", path],
-        check=True, capture_output=True
+        "silence clip generation"
     )
 
 def concat_audio(segment_paths, output_path):
@@ -62,10 +67,10 @@ def concat_audio(segment_paths, output_path):
     with open(list_path, "w") as f:
         for p in segment_paths:
             f.write(f"file '{p}'\n")
-    subprocess.run(
+    run_ffmpeg(
         [FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
          "-c:a", "libmp3lame", "-q:a", "4", output_path],
-        check=True, capture_output=True
+        "audio concat"
     )
 
 def get_media_duration(path):
@@ -80,11 +85,15 @@ def get_media_duration(path):
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 def make_frame_video_clip(image_path, duration, output_path):
-    subprocess.run(
+    # ultrafast preset + single thread: trades file efficiency for a much
+    # smaller memory footprint, since the default preset was heavy enough
+    # to get OOM-killed on Railway's container.
+    run_ffmpeg(
         [FFMPEG, "-y", "-loop", "1", "-i", image_path,
-         "-c:v", "libx264", "-t", str(duration), "-pix_fmt", "yuv420p",
+         "-c:v", "libx264", "-preset", "ultrafast", "-threads", "1",
+         "-t", str(duration), "-pix_fmt", "yuv420p",
          "-vf", f"scale={REEL_WIDTH}:{REEL_HEIGHT}", "-r", str(FPS), output_path],
-        check=True, capture_output=True
+        f"frame video clip ({image_path})"
     )
 
 def concat_videos(clip_paths, output_path):
@@ -92,17 +101,17 @@ def concat_videos(clip_paths, output_path):
     with open(list_path, "w") as f:
         for p in clip_paths:
             f.write(f"file '{p}'\n")
-    subprocess.run(
+    run_ffmpeg(
         [FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", list_path,
          "-c", "copy", output_path],
-        check=True, capture_output=True
+        "video concat"
     )
 
 def mux_video_audio(video_path, audio_path, output_path):
-    subprocess.run(
+    run_ffmpeg(
         [FFMPEG, "-y", "-i", video_path, "-i", audio_path,
          "-c:v", "copy", "-c:a", "aac", "-shortest", output_path],
-        check=True, capture_output=True
+        "final mux"
     )
 
 def send_video(file_path, caption):
@@ -124,13 +133,9 @@ def main():
     n = len(lines)
     print(f"  [reel video] {n} lines to process")
 
-    # Phase 1: all frames, sync, no event loop active.
     frame_paths = generate_all_frames(lines)
-
-    # Phase 2: all audio, async, isolated event loop, no Playwright calls inside it.
     seg_audio_paths = asyncio.run(synthesize_all_audio(lines))
 
-    # Phase 3: back in sync code -- measure durations, build clips, stitch.
     make_silence_clip("/tmp/reel_silence.mp3", PAUSE_SECONDS)
 
     audio_segment_paths = []
