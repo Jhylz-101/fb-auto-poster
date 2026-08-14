@@ -1426,6 +1426,160 @@ def build_news_image():
     caption = build_news_caption(articles)
     return buffer, caption
 
+# ---------- Custom News (dynamic-theme template for externally sourced news) ----------
+
+CUSTOM_NEWS_THEMES = {
+    "disaster": {
+        "badge": "ALERT",
+        "color": "#c9453c",
+        "bg_prompt": "misty mountain highway, dramatic dark storm clouds, rain, moody atmosphere, minimalist"
+    },
+    "crime": {
+        "badge": "SAFETY ALERT",
+        "color": "#8a2e2e",
+        "bg_prompt": "dark misty highland at night, moody shadows, minimalist"
+    },
+    "government": {
+        "badge": "OFFICIAL",
+        "color": "#4a7ba6",
+        "bg_prompt": "blue-toned misty mountain highland, formal calm atmosphere, minimalist"
+    },
+    "community": {
+        "badge": "COMMUNITY",
+        "color": "#d4a94a",
+        "bg_prompt": "warm golden mountain valley at sunset, community atmosphere, minimalist"
+    },
+    "weather": {
+        "badge": "WEATHER WATCH",
+        "color": "#5b8fa8",
+        "bg_prompt": "dramatic storm clouds over misty mountains, dark grey sky, minimalist"
+    },
+    "general": {
+        "badge": "BREAKING",
+        "color": "#b02e26",
+        "bg_prompt": "misty mountain highland landscape, moody overcast light, minimalist"
+    }
+}
+
+CUSTOM_NEWS_KEYWORDS = {
+    "disaster": ["landslide", "flood", "fire", "explosion", "accident", "crash", "collapse",
+                 "earthquake", "killed", "dead", "injured", "victims", "emergency", "rescue",
+                 "mudflow", "rockslide"],
+    "crime": ["arrest", "arrested", "robbery", "shooting", "stabbing", "murder", "police",
+              "raid", "illegal drugs", "scam", "fraud", "suspect", "wanted"],
+    "government": ["mayor", "governor", "dpwh", "dswd", "doh ", "ordinance", "budget",
+                   "barangay", "municipal", "provincial", "senate", "congress", "president",
+                   "election", "doe ", "dilg", "executive order", "resolution"],
+    "community": ["festival", "fiesta", "celebration", "tourism", "farmers", "harvest",
+                  "award", "scholarship", "donation", "charity", "anniversary", "fair"],
+    "weather": ["typhoon", "rainfall", "storm", "habagat", "signal no", "pagasa",
+                "weather advisory", "flood warning", "amihan"]
+}
+
+def classify_custom_news_category(text):
+    text_lower = text.lower()
+    for category, keywords in CUSTOM_NEWS_KEYWORDS.items():
+        if any(keyword in text_lower for keyword in keywords):
+            return category
+    return "general"
+
+def build_custom_news_html(headline, body, category):
+    theme = CUSTOM_NEWS_THEMES.get(category, CUSTOM_NEWS_THEMES["general"])
+    today = datetime.now().strftime("%B %d, %Y")
+
+    try:
+        bg_img = generate_background(theme["bg_prompt"], height=1350)
+        bg_data_uri = image_to_data_uri(bg_img)
+        bg_style = f"background-image:url('{bg_data_uri}'); background-size:cover; background-position:center;"
+    except Exception as e:
+        print(f"  [custom news bg] could not generate background, using flat fallback: {e}")
+        bg_style = ""
+
+    html_out = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700;800&display=swap');
+  * {{ margin:0; padding:0; box-sizing:border-box; }}
+  body {{ width:1080px; min-height:900px; font-family:'Archivo',sans-serif; background:#14181c; position:relative; }}
+
+  .bg {{ position:absolute; inset:0; {bg_style} background-color:#14181c; background-repeat:no-repeat; }}
+  .overlay {{ position:absolute; inset:0; background: linear-gradient(160deg, rgba(14,16,20,0.80) 0%, rgba(20,24,28,0.82) 55%, rgba(24,28,34,0.88) 100%); }}
+
+  .content {{ position:relative; z-index:2; padding:76px; padding-bottom:60px; }}
+
+  .topbar {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:40px; }}
+  .brand {{ color:#a8a098; font-size:22px; font-weight:700; letter-spacing:2px; }}
+  .date {{ color:#b0b0b0; font-size:21px; }}
+
+  .badge {{
+    align-self:flex-start; background:{theme["color"]}; color:#fff; font-weight:800; font-size:26px;
+    letter-spacing:3px; padding:15px 32px; text-transform:uppercase; margin-bottom:40px; display:inline-block;
+    border-radius:6px;
+  }}
+
+  .headline {{
+    font-family:'Archivo Black',sans-serif; color:#f7f4ee; font-size:52px; line-height:1.18;
+  }}
+
+  .rule {{ height:2px; background:{theme["color"]}66; margin:42px 0; }}
+
+  .body {{ color:#e3ded3; font-size:29px; line-height:1.65; }}
+
+  .footer {{ margin-top:52px; display:flex; justify-content:space-between; align-items:center; padding-top:36px; border-top:1px solid rgba(247,242,227,0.16); }}
+  .footerbrand {{ color:#a8a098; font-size:22px; font-weight:700; letter-spacing:2px; }}
+  .tag {{ color:{theme["color"]}; font-size:20px; font-weight:700; letter-spacing:1px; }}
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+  <div class="overlay"></div>
+  <div class="content">
+    <div class="topbar">
+      <div class="brand">BENGUET DAILY UPDATE</div>
+      <div class="date">{today}</div>
+    </div>
+
+    <div class="badge">{theme["badge"]}</div>
+
+    <div class="headline">{headline}</div>
+
+    <div class="rule"></div>
+
+    <div class="body">{body}</div>
+
+    <div class="footer">
+      <div class="footerbrand">BENGUET DAILY UPDATE</div>
+      <div class="tag">{theme["badge"]}</div>
+    </div>
+  </div>
+</body>
+</html>"""
+    return html_out
+
+def build_custom_news_image(raw_text):
+    """Takes Joel's pasted text (headline on first line, story below) and
+    turns it into a themed, ready-to-approve post."""
+    lines = [l.strip() for l in raw_text.strip().split("\n") if l.strip()]
+
+    if len(lines) >= 2:
+        headline = lines[0]
+        body = " ".join(lines[1:])
+    else:
+        full = lines[0] if lines else raw_text.strip()
+        sentences = re.split(r"(?<=[.!?])\s+", full)
+        headline = sentences[0][:100]
+        body = full
+
+    category = classify_custom_news_category(headline + " " + body)
+    html_out = build_custom_news_html(headline, body, category)
+    buffer = render_html_to_png_dynamic(html_out)
+
+    caption = body if len(body) <= 1000 else body[:1000] + "…"
+    label = f"customnews_{category}"
+    return buffer, caption, label
+
 # ---------- Telegram ----------
 
 def send_photo_for_approval(image_buffer, label, filename="update.jpg", mime="image/jpeg", caption=None):
