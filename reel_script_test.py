@@ -1,7 +1,7 @@
-from main import build_reel_script, send_text_message
+from main import build_reel_script_text, send_text_message
 
 def main():
-    script_text, headlines_used, headlines_available, est_seconds = build_reel_script()
+    script_text, headlines_used, headlines_available, est_seconds = build_reel_script_text()
 
     trimmed_note = ""
     if headlines_used < headlines_available:
