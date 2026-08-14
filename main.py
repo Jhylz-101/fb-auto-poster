@@ -304,8 +304,10 @@ def weather_prompt_from_condition(condition_main):
     }
     return mapping.get(condition_main, "misty mountain highland landscape, soft colors, minimalist")
 
-def generate_background(prompt, height=1080):
-    url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height={height}"
+def generate_background(prompt, height=1080, seed=None):
+    if seed is None:
+        seed = random.randint(1, 999999)
+    url = f"https://image.pollinations.ai/prompt/{prompt}?width=1080&height={height}&seed={seed}"
     response = requests.get(url)
     img = Image.open(BytesIO(response.content)).convert("RGB")
     return img
