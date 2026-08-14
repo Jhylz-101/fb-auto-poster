@@ -4,3 +4,5 @@ playwright
 flask
 feedparser
 edge-tts
+moviepy
+imageio-ffmpeg
