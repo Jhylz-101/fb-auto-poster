@@ -2417,20 +2417,39 @@ def is_too_similar_to_selected(article, selected):
 EXPLAINER_TITLE_PATTERNS = [
     r"^why\s", r"^how\s", r"^what\s", r"^when\s", r"^who\s", r"^where\s",
     r"^making sense of", r"^explainer:", r"^analysis:", r"^opinion:",
-    r"^commentary:", r"^here's why", r"^here's how", r"^in case you missed it"
+    r"^commentary:", r"^here's why", r"^here's how", r"^in case you missed it",
+    r"^meet\s"
 ]
+
+def is_bracketed_column(article):
+    """Catches named opinion/commentary columns published in [Bracket
+    Name] format (e.g. '[Tech Thoughts] The funnel from video games...',
+    '[The Wide Shot] Why I ban students...') -- a very reliable signal
+    since straight news headlines essentially never start this way,
+    and it generalizes to ANY bracketed column name without needing to
+    know each one in advance."""
+    title = article["title"].strip()
+    return bool(re.match(r"^\[.+?\]", title))
 
 def is_explainer_style(article):
     """Catches question-format headlines and explainer/analysis pieces
     (e.g. 'Why is Maya likely to keep its transfer fee?', 'Making sense
     of KKR's offer on First Gen') -- these are opinion/analysis content,
-    not straight news headlines, and read oddly as spoken narration."""
+    not straight news headlines, and read oddly as spoken narration.
+    Checks the full title AND the portion after a colon, since a lead-in
+    like 'Nonstop Cordillera Rains: How Gloomy Weather Can Affect Your
+    Mood' buries the explainer pattern past the colon."""
     title = article["title"].strip().lower()
-    if title.endswith("?"):
+    if "?" in title:
         return True
     for pattern in EXPLAINER_TITLE_PATTERNS:
         if re.match(pattern, title):
             return True
+    if ":" in title:
+        remainder = title.split(":", 1)[1].strip()
+        for pattern in EXPLAINER_TITLE_PATTERNS:
+            if re.match(pattern, remainder):
+                return True
     return False
 
 # Known recurring opinion/commentary columns -- these get published as
@@ -2441,16 +2460,25 @@ FEATURE_COLUMN_NAMES = [
     "hindi ito marites",
 ]
 
+# Cultural/lifestyle/research feature phrases -- also necessarily
+# incomplete, same as FEATURE_COLUMN_NAMES above.
+FEATURE_PHRASES = [
+    "buwan ng wika", "new research",
+]
+
 def is_feature_or_column_style(article):
     """Catches survey/feature-style headlines (e.g. '59% of Filipino
-    workers happy with salary...') and known named opinion columns --
-    real published content, but 'back of the newspaper' material, not
-    headline news."""
+    workers happy with salary...'), known named opinion columns, and
+    cultural/lifestyle feature phrases -- real published content, but
+    'back of the newspaper' material, not headline news."""
     title = article["title"].strip().lower()
     if re.match(r"^\d+%", title):
         return True
     for col_name in FEATURE_COLUMN_NAMES:
         if title.startswith(col_name):
+            return True
+    for phrase in FEATURE_PHRASES:
+        if phrase in title:
             return True
     return False
 
@@ -2538,6 +2566,11 @@ def build_reel_headline_pool(max_items=8):
     # Feature/survey pieces and known opinion columns excluded -- real
     # articles, but not headline news.
     articles = [a for a in articles if not is_feature_or_column_style(a)]
+
+    # Bracketed opinion/commentary columns excluded -- e.g. "[Tech
+    # Thoughts]", "[The Wide Shot]" -- real articles, but a columnist's
+    # take, not news.
+    articles = [a for a in articles if not is_bracketed_column(a)]
 
     # Same-day dedup: don't repeat a headline already used in an earlier
     # run today (6am/12pm/5pm), unless that would leave too few
