@@ -1,6 +1,8 @@
 import asyncio
 import subprocess
 import re
+import os
+import glob
 import edge_tts
 import imageio_ffmpeg
 
@@ -9,6 +11,42 @@ from main import (
     send_video_for_approval, record_reel_headlines_used,
     REEL_WIDTH, REEL_HEIGHT
 )
+
+
+def ensure_playwright_browser_installed():
+    """Same self-healing check already used in webhook_server.py --
+    Railway's build-time Playwright install doesn't always reliably
+    persist for every service. Check for the actual binary at startup
+    and install it on the spot if missing."""
+    cache_dir = os.path.expanduser("~/.cache/ms-playwright")
+    chromium_dirs = glob.glob(os.path.join(cache_dir, "chromium*"))
+
+    browser_found = False
+    for d in chromium_dirs:
+        matches = glob.glob(os.path.join(d, "**", "chrome*"), recursive=True)
+        if matches:
+            browser_found = True
+            break
+
+    if browser_found:
+        print("  [playwright check] Chromium binary found, skipping install")
+        return
+
+    print("  [playwright check] Chromium binary not found — installing now, this may take a minute...")
+    try:
+        result = subprocess.run(
+            ["playwright", "install", "chromium"],
+            capture_output=True, text=True, timeout=300
+        )
+        if result.returncode == 0:
+            print("  [playwright check] Chromium installed successfully")
+        else:
+            print(f"  [playwright check] install failed (exit {result.returncode}): {result.stderr[-1000:]}")
+    except Exception as e:
+        print(f"  [playwright check] install crashed: {e}")
+
+
+ensure_playwright_browser_installed()
 
 VOICE_ID = "en-US-GuyNeural"
 PAUSE_SECONDS = 0.4
