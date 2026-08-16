@@ -35,7 +35,7 @@ def ensure_playwright_browser_installed():
     print("  [playwright check] Chromium binary not found — installing now, this may take a minute...")
     try:
         result = subprocess.run(
-            ["playwright", "install", "chromium"],
+            ["playwright", "install", "--with-deps", "chromium"],
             capture_output=True, text=True, timeout=300
         )
         if result.returncode == 0:
